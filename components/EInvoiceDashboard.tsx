@@ -3,12 +3,27 @@
 import Link from "next/link";
 import { Settings } from "lucide-react";
 import { useState } from "react";
+import type { ChatSessionStatus } from "@/types/chat";
 import { ChatWindow } from "./ChatWindow";
 import { GuardrailsPanel } from "./GuardrailsPanel";
 import { StatusChecks } from "./StatusChecks";
 
+const idleProcessingStatus: ChatSessionStatus = {
+  sessionId: "",
+  status: "IDLE",
+  progress: 0,
+  step: "Idle",
+  answer: null,
+  confidence: null,
+  sources: [],
+  error: null
+};
+
 export function EInvoiceDashboard() {
   const [refreshKey, setRefreshKey] = useState(0);
+  const [processingStatus, setProcessingStatus] = useState<ChatSessionStatus>(
+    idleProcessingStatus
+  );
   const refresh = () => setRefreshKey((current) => current + 1);
 
   return (
@@ -29,13 +44,17 @@ export function EInvoiceDashboard() {
         </div>
       </header>
 
-      <StatusChecks refreshKey={refreshKey} onRefresh={refresh} />
+      <StatusChecks
+        processingStatus={processingStatus}
+        refreshKey={refreshKey}
+        onRefresh={refresh}
+      />
 
       <div className="dashboard-grid">
         <div className="side-stack">
           <GuardrailsPanel onSaved={refresh} />
         </div>
-        <ChatWindow />
+        <ChatWindow onProcessingStatusChange={setProcessingStatus} />
       </div>
     </main>
   );

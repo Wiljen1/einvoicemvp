@@ -231,6 +231,12 @@ a {
   overflow-wrap: anywhere;
 }
 
+.status-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .status-dot {
   display: inline-block;
   width: 10px;
@@ -308,7 +314,7 @@ a {
 .chat-panel {
   min-height: 650px;
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto auto 1fr auto;
 }
 
 .messages {
@@ -392,6 +398,69 @@ a {
 .engine-badge {
   background: var(--accent-soft);
   color: var(--accent-strong);
+}
+
+.processing {
+  display: grid;
+  gap: 9px;
+  margin-bottom: 14px;
+}
+
+.processing.compact {
+  margin-bottom: 0;
+}
+
+.processing-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.processing-label {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.processing-label span {
+  overflow-wrap: anywhere;
+}
+
+.progress-track {
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e4e0d4;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 180ms ease;
+}
+
+.stop-button {
+  justify-self: start;
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .source-list {

@@ -9,6 +9,22 @@ export interface ChatAnswer {
   confidence: number;
   sources: SourceReference[];
   engine: "codex" | "codex-placeholder";
+  fromCache?: boolean;
+}
+
+export type ChatSessionState = "IDLE" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
+
+export interface ChatSessionStatus {
+  sessionId: string;
+  status: ChatSessionState;
+  progress: number;
+  step: string;
+  answer: string | null;
+  confidence: number | null;
+  sources: SourceReference[];
+  error: string | null;
+  engine?: "codex" | "codex-placeholder";
+  fromCache?: boolean;
 }
 
 export interface ApiSuccess<T> {

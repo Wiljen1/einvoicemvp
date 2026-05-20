@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { loadSharePointConfig, saveSharePointConfig, toPublicSharePointConfig } from "@/services/sharepointConfigService";
 import { checkSharePointAccess } from "@/services/sharepointService";
 
+export const runtime = "nodejs";
+
 export async function GET() {
   const config = await loadSharePointConfig();
   const status = await checkSharePointAccess(config);

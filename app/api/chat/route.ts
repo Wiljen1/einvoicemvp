@@ -10,6 +10,8 @@ import { loadGuardrails } from "@/services/guardrailsService";
 import { checkSharePointAccess, listApprovedDocuments } from "@/services/sharepointService";
 import type { ChatAnswer } from "@/types/chat";
 
+export const runtime = "nodejs";
+
 const chatRequestSchema = z.object({
   question: z.string().trim().min(1).max(600)
 });
@@ -64,7 +66,7 @@ export async function POST(request: Request) {
       answer: guardrails.fallbackMessage,
       confidence: 0,
       sources: [],
-      engine: codex.executionMode === "real" ? "codex" : "codex-placeholder"
+      engine: codex.executionMode === "placeholder" ? "codex-placeholder" : "codex"
     };
 
     return NextResponse.json({

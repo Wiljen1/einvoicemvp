@@ -1,10 +1,14 @@
 # E-Invoice MVP
 
-Lightweight local web app for an approved-source e-invoicing chatbot. It uses a local Codex availability check, editable guardrails, and an approved SharePoint folder or local mock folder for document search.
+Lightweight local web app for an approved-source e-invoicing chatbot. It runs on each colleague's machine, uses that machine's local Codex installation, and searches only the configured SharePoint folder or the approved local mock `documents` folder.
 
-## Quick Start
+No paid hosting, centralized production server, cloud Codex API, or paid GPT API is required for the MVP.
+
+## Clone And Run
 
 ```bash
+git clone https://github.com/Wiljen1/einvoicemvp.git
+cd einvoicemvp
 npm install
 cp .env.example .env.local
 npm run dev
@@ -12,14 +16,63 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-## What It Does
+## Local Sharing Model
 
-- Shows Codex status, SharePoint connection status, and the active approved folder.
-- Lets an admin edit guardrails from the dashboard.
-- Lets an admin configure and test SharePoint settings at `/settings/sharepoint`.
-- Searches only the configured SharePoint folder, or the approved local `documents` fallback when SharePoint credentials are incomplete.
+- Code lives in GitHub repo `einvoicemvp`.
+- Colleagues clone the repo locally.
+- Each colleague runs the app on their own machine.
+- Each colleague uses their own local Codex app or CLI.
+- Each colleague connects to the approved SharePoint folder.
+- No GitHub Codespaces, paid hosting, paid cloud AI API, centralized server, or complex Docker setup is required.
+
+## Codex Setup
+
+The app detects local Codex in this order:
+
+1. `CODEX_BIN` in `.env.local`
+2. macOS: `/Applications/Codex.app/Contents/Resources/codex`
+3. Windows common install paths under `%LOCALAPPDATA%`, `%PROGRAMFILES%`, and `%PROGRAMFILES(X86)%`
+4. `codex` from the system path
+
+To set it manually:
+
+```bash
+CODEX_BIN=/Applications/Codex.app/Contents/Resources/codex
+```
+
+Windows example:
+
+```bash
+CODEX_BIN=C:\Users\you\AppData\Local\Programs\Codex\codex.exe
+```
+
+The health check runs `codex --version`. If Codex is not found, the dashboard shows setup help.
+
+## SharePoint Setup
+
+Open `/settings/sharepoint` and enter:
+
+- SharePoint Site URL
+- SharePoint Folder URL or Folder Path
+- Tenant ID
+- Client ID
+- Client Secret
+- Optional Document Library Name
+
+Secrets are stored only server-side in `config/sharepoint.config.json`, which is ignored by Git. The browser only receives masked secret status.
+
+## Mock Documents
+
+If SharePoint credentials are incomplete and `ALLOW_MOCK_DOCUMENTS=true`, the app uses direct files in the local `documents` folder. Nested folders are ignored.
+
+## Chat Behavior
+
+- Shows progress while processing.
+- Lets the user stop a running local Codex job.
+- Caches completed answers in `artifacts/cache`.
+- Writes local Codex prompt/output artifacts to `artifacts/codex-operators`.
+- Answers only from approved SharePoint/mock document context.
 - Refuses unsupported questions with the configured fallback message.
-- Returns answer text, confidence, source references, and the answer engine mode.
 
 ## Scripts
 
@@ -31,8 +84,9 @@ npm run lint
 npm run typecheck
 ```
 
-## MVP Notes
+See also:
 
-Codex execution is separated into detection and execution. The default answer engine is a clearly marked local placeholder (`CODEX_EXECUTION_MODE=placeholder`) so the app can ship and be tested safely. Real Codex CLI execution can be enabled later behind the same service boundary.
-
-SharePoint settings are saved server-side to `config/sharepoint.config.json`, which is ignored by Git because it can contain secrets. The frontend only receives masked secret status.
+- `docs/local-sharing.md`
+- `docs/codex-detection.md`
+- `docs/sharepoint-setup.md`
+- `docs/troubleshooting.md`

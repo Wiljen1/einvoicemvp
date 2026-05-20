@@ -10,3 +10,5 @@ build
 .DS_Store
 *.tsbuildinfo
 config/sharepoint.config.json
+artifacts/cache/*
+artifacts/codex-operators/*

@@ -1,7 +1,9 @@
 "use client";
 
-import { RefreshCw, ServerCog, ShieldCheck, Folder } from "lucide-react";
+import { Activity, PlugZap, RefreshCw, ServerCog, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { ChatSessionStatus } from "@/types/chat";
+import { ProcessingProgressBar } from "./ProcessingProgressBar";
 
 interface StatusResponse {
   ok: true;
@@ -9,7 +11,9 @@ interface StatusResponse {
     codex: {
       available: boolean;
       message: string;
-      executionMode: "placeholder" | "real";
+      executionMode: "placeholder" | "operator";
+      binaryPath: string;
+      setupInstructions?: string;
     };
     sharepoint: {
       available: boolean;
@@ -22,12 +26,18 @@ interface StatusResponse {
 
 interface StatusChecksProps {
   refreshKey: number;
+  processingStatus: ChatSessionStatus;
   onRefresh: () => void;
 }
 
-export function StatusChecks({ refreshKey, onRefresh }: StatusChecksProps) {
+export function StatusChecks({
+  refreshKey,
+  processingStatus,
+  onRefresh
+}: StatusChecksProps) {
   const [status, setStatus] = useState<StatusResponse["data"] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,6 +68,22 @@ export function StatusChecks({ refreshKey, onRefresh }: StatusChecksProps) {
   const codexAvailable = status?.codex.available;
   const sharePointAvailable = status?.sharepoint.available;
 
+  async function testSharePointConnection() {
+    setTesting(true);
+    try {
+      await fetch("/api/settings/sharepoint/test", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({})
+      });
+      onRefresh();
+    } finally {
+      setTesting(false);
+    }
+  }
+
   return (
     <section className="status-grid" aria-label="System status checks">
       <div className="status-card">
@@ -69,10 +95,12 @@ export function StatusChecks({ refreshKey, onRefresh }: StatusChecksProps) {
           <span className={`status-dot ${loading ? "pending" : codexAvailable ? "ok" : ""}`} />{" "}
           {loading ? "Checking Codex" : status?.codex.message || "Codex not found / not available"}
         </p>
-        <span className="status-meta">
-          {status?.codex.executionMode === "real" ? "Local Codex execution" : "Local Codex placeholder"}
-        </span>
+        <span className="status-meta">{status?.codex.binaryPath || "No binary detected"}</span>
+        {!loading && !codexAvailable && status?.codex.setupInstructions ? (
+          <span className="status-meta">{status.codex.setupInstructions}</span>
+        ) : null}
       </div>
+
       <div className="status-card">
         <div className="status-heading">
           <span>SharePoint Connection</span>
@@ -83,19 +111,27 @@ export function StatusChecks({ refreshKey, onRefresh }: StatusChecksProps) {
           {loading ? "Checking folder access" : status?.sharepoint.message || "SharePoint folder not accessible"}
         </p>
         <span className="status-meta">{status?.sharepoint.mode || "unavailable"}</span>
-      </div>
-      <div className="status-card">
-        <div className="status-heading">
-          <span>Active Folder</span>
-          <Folder aria-hidden="true" size={17} />
-        </div>
         <p className="folder-path">
           {status?.sharepoint.activeFolder || "No approved SharePoint folder configured"}
         </p>
-        <button className="button secondary" type="button" onClick={onRefresh}>
-          <RefreshCw aria-hidden="true" size={16} />
-          Refresh Status
-        </button>
+        <div className="status-actions">
+          <button className="button secondary" type="button" onClick={testSharePointConnection}>
+            <PlugZap aria-hidden="true" size={16} />
+            {testing ? "Testing" : "Test Connection"}
+          </button>
+          <button className="button secondary" type="button" onClick={onRefresh}>
+            <RefreshCw aria-hidden="true" size={16} />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <div className="status-card">
+        <div className="status-heading">
+          <span>Processing Status</span>
+          <Activity aria-hidden="true" size={17} />
+        </div>
+        <ProcessingProgressBar compact status={processingStatus} />
       </div>
     </section>
   );

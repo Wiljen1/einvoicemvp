@@ -2,15 +2,23 @@
 
 ## Local
 
-1. Install dependencies with `npm install`.
-2. Copy `.env.example` to `.env.local`.
-3. Leave SharePoint values empty for mock-folder development, or configure them in the website at `/settings/sharepoint`.
-4. Start the app with `npm run dev`.
-5. Open `http://localhost:3000`.
+```bash
+git clone https://github.com/Wiljen1/einvoicemvp.git
+cd einvoicemvp
+npm install
+cp .env.example .env.local
+npm run dev
+```
+
+Open `http://localhost:3000`.
+
+Leave SharePoint values empty for mock-folder development, or configure them in the website at `/settings/sharepoint`.
+
+Set `CODEX_BIN` in `.env.local` if Codex is installed somewhere the app cannot detect automatically.
 
 ## Production
 
-Use `.env.production` or the hosting provider's server-side secret store for:
+The MVP does not require a production server. If a production-style local build is needed, use `.env.production` for:
 
 - `SHAREPOINT_SITE_URL`
 - `SHAREPOINT_FOLDER_PATH`
@@ -18,7 +26,7 @@ Use `.env.production` or the hosting provider's server-side secret store for:
 - `SHAREPOINT_TENANT_ID`
 - `SHAREPOINT_CLIENT_SECRET`
 - `SHAREPOINT_DOCUMENT_LIBRARY_NAME`
-- `CODEX_COMMAND`
+- `CODEX_BIN`
 - `CODEX_EXECUTION_MODE`
 - `ALLOW_MOCK_DOCUMENTS`
 
