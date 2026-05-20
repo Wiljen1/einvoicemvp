@@ -146,9 +146,36 @@ function tokenize(value: string): string[] {
       value
         .split(/\s+/)
         .map((token) => token.trim())
+        .map(stemToken)
         .filter((token) => token.length > 1 && !STOP_WORDS.has(token))
     )
   );
+}
+
+function stemToken(token: string): string {
+  if (token.length <= 4) {
+    return token;
+  }
+
+  if (token.endsWith("ies") && token.length > 5) {
+    return `${token.slice(0, -3)}y`;
+  }
+
+  if (token.endsWith("ing") && token.length > 6) {
+    const base = token.slice(0, -3);
+    const last = base.at(-1);
+    return last && base.endsWith(`${last}${last}`) ? base.slice(0, -1) : base;
+  }
+
+  if (token.endsWith("ed") && token.length > 5) {
+    return token.slice(0, -2);
+  }
+
+  if (token.endsWith("s") && token.length > 5) {
+    return token.slice(0, -1);
+  }
+
+  return token;
 }
 
 function jaccardSimilarity(left: string[], right: string[]): number {

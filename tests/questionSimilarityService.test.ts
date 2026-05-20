@@ -14,6 +14,12 @@ describe("questionSimilarityService", () => {
     expect(
       scoreQuestionSimilarity("what is the setup process", "what setup process should i follow")
     ).toBeGreaterThanOrEqual(0.75);
+    expect(
+      scoreQuestionSimilarity(
+        "what countries are supported for e invoicing",
+        "which countries support e invoicing"
+      )
+    ).toBeGreaterThanOrEqual(0.9);
   });
 
   it("keeps unrelated questions below the reuse threshold", () => {
