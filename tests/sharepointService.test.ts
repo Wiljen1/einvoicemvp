@@ -15,11 +15,9 @@ import type { SharePointConfig } from "@/types/sharepoint";
 
 describe("sharepointService", () => {
   const nestedFolder = path.join(defaultDocumentsDirectory, "_not-approved-nested");
-  const localSyncedFolder = path.join(defaultDocumentsDirectory, "_local-synced-sharepoint");
 
   afterEach(async () => {
     await fs.rm(nestedFolder, { force: true, recursive: true });
-    await fs.rm(localSyncedFolder, { force: true, recursive: true });
     vi.unstubAllGlobals();
   });
 
@@ -97,7 +95,7 @@ describe("sharepointService", () => {
     expect(status.folderPath).toContain("documents");
   });
 
-  it("does not mark a SharePoint web link readable without credentials or local sync", async () => {
+  it("keeps the configured SharePoint folder visible when mock is active", async () => {
     const status = await getDocumentSourceStatus({
       siteUrl: "https://company.sharepoint.com/sites/einvoice",
       folderPath: "Shared Documents/Approved",
@@ -106,105 +104,10 @@ describe("sharepointService", () => {
       clientSecret: ""
     });
 
-    expect(status.activeSource).toBe("NONE");
-    expect(status.available).toBe(false);
+    expect(status.activeSource).toBe("MOCK");
     expect(status.configuredSharePointFolderUrl).toBe(
       "https://company.sharepoint.com/sites/einvoice/Shared Documents/Approved"
     );
-  });
-
-  it("uses a local synced SharePoint folder without app credentials", async () => {
-    await fs.mkdir(localSyncedFolder, { recursive: true });
-    await fs.writeFile(
-      path.join(localSyncedFolder, "synced.md"),
-      "Approved synced SharePoint content."
-    );
-
-    const status = await getDocumentSourceStatus({
-      siteUrl: "https://company.sharepoint.com/sites/einvoice",
-      folderPath: "Shared Documents/Approved",
-      localFolderPath: localSyncedFolder,
-      tenantId: "",
-      clientId: "",
-      clientSecret: ""
-    });
-
-    expect(status.activeSource).toBe("LOCAL_SYNC");
-    expect(status.available).toBe(true);
-    expect(status.folderPath).toBe(localSyncedFolder);
-  });
-
-  it("reports local synced SharePoint access in the settings status", async () => {
-    await fs.mkdir(localSyncedFolder, { recursive: true });
-
-    const status = await checkSharePointAccess({
-      siteUrl: "https://company.sharepoint.com/sites/einvoice",
-      folderPath: "Shared Documents/Approved",
-      localFolderPath: localSyncedFolder,
-      tenantId: "",
-      clientId: "",
-      clientSecret: ""
-    });
-
-    expect(status.available).toBe(true);
-    expect(status.mode).toBe("local_sync");
-    expect(status.activeFolder).toBe(localSyncedFolder);
-  });
-
-  it("reads local synced SharePoint documents without app credentials", async () => {
-    await fs.mkdir(localSyncedFolder, { recursive: true });
-    await fs.writeFile(
-      path.join(localSyncedFolder, "synced.md"),
-      "Approved synced SharePoint content."
-    );
-
-    const documents = await listApprovedDocuments({
-      siteUrl: "https://company.sharepoint.com/sites/einvoice",
-      folderPath: "Shared Documents/Approved",
-      localFolderPath: localSyncedFolder,
-      tenantId: "",
-      clientId: "",
-      clientSecret: ""
-    });
-
-    expect(documents).toHaveLength(1);
-    expect(documents[0].fileName).toBe("synced.md");
-    expect(documents[0].content).toContain("Approved synced SharePoint content.");
-  });
-
-  it("does not fall back when a selected local synced SharePoint folder is unavailable", async () => {
-    const status = await getDocumentSourceStatus({
-      siteUrl: "https://company.sharepoint.com/sites/einvoice",
-      folderPath: "Shared Documents/Approved",
-      localFolderPath: localSyncedFolder,
-      tenantId: "",
-      clientId: "",
-      clientSecret: ""
-    });
-    const documents = await listApprovedDocuments({
-      siteUrl: "https://company.sharepoint.com/sites/einvoice",
-      folderPath: "Shared Documents/Approved",
-      localFolderPath: localSyncedFolder,
-      tenantId: "",
-      clientId: "",
-      clientSecret: ""
-    });
-
-    expect(status.activeSource).toBe("NONE");
-    expect(status.message).toBe("Local synced SharePoint folder is not accessible");
-    expect(documents).toEqual([]);
-  });
-
-  it("does not fall back to mock documents when SharePoint is selected but unreadable", async () => {
-    const documents = await listApprovedDocuments({
-      siteUrl: "https://company.sharepoint.com/sites/einvoice",
-      folderPath: "Shared Documents/Approved",
-      tenantId: "",
-      clientId: "",
-      clientSecret: ""
-    });
-
-    expect(documents).toEqual([]);
   });
 
   it("masks client secrets in public SharePoint config", () => {
@@ -236,7 +139,6 @@ describe("sharepointService", () => {
     );
     expect(publicConfig.folderUrl).toBe(testSharePointFolderUrl);
     expect(publicConfig.folderPath).toBe("SuiteSuccess Assets/Electronic Invoicing");
-    expect(publicConfig.localFolderPath).toBe("");
     expect(publicConfig.documentLibraryName).toBe("SuiteSuccess Assets");
     expect(publicConfig.activeFolder).toBe(testSharePointFolderUrl);
   });

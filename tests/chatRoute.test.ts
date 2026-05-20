@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { POST } from "@/app/api/chat/route";
 import { POST as START } from "@/app/api/chat/start/route";
 import { GET as STATUS } from "@/app/api/chat/status/[sessionId]/route";
@@ -6,10 +6,6 @@ import { GET as STATUS } from "@/app/api/chat/status/[sessionId]/route";
 const originalEnv = { ...process.env };
 
 describe("chat API", () => {
-  beforeEach(() => {
-    process.env.SHAREPOINT_DISABLE_LOCAL_CONFIG = "true";
-  });
-
   afterEach(() => {
     process.env = { ...originalEnv };
   });

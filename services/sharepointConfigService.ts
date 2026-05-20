@@ -20,7 +20,6 @@ const sharePointConfigSchema = z.object({
   siteUrl: optionalString,
   folderPath: optionalString,
   folderUrl: optionalString,
-  localFolderPath: optionalString,
   tenantId: optionalString,
   clientId: optionalString,
   clientSecret: secretString,
@@ -37,7 +36,6 @@ export const emptySharePointConfig: SharePointConfig = {
   siteUrl: "",
   folderPath: "",
   folderUrl: "",
-  localFolderPath: "",
   tenantId: "",
   clientId: "",
   clientSecret: "",
@@ -47,16 +45,12 @@ export const emptySharePointConfig: SharePointConfig = {
 };
 
 export async function loadSharePointConfig(): Promise<SharePointConfig> {
-  const fromFile =
-    process.env.SHAREPOINT_DISABLE_LOCAL_CONFIG === "true"
-      ? emptySharePointConfig
-      : await loadSharePointConfigFromFile();
+  const fromFile = await loadSharePointConfigFromFile();
 
   return sanitizeSharePointConfig({
     siteUrl: fromFile.siteUrl || process.env.SHAREPOINT_SITE_URL || "",
     folderPath: fromFile.folderPath || fromFile.folderUrl || process.env.SHAREPOINT_FOLDER_PATH || "",
     folderUrl: fromFile.folderUrl || "",
-    localFolderPath: fromFile.localFolderPath || process.env.SHAREPOINT_LOCAL_FOLDER_PATH || "",
     tenantId: fromFile.tenantId || process.env.SHAREPOINT_TENANT_ID || "",
     clientId: fromFile.clientId || process.env.SHAREPOINT_CLIENT_ID || "",
     clientSecret: fromFile.clientSecret || process.env.SHAREPOINT_CLIENT_SECRET || "",
@@ -114,7 +108,6 @@ export function toPublicSharePointConfig(config: SharePointConfig): PublicShareP
     siteUrl: normalized.siteUrl,
     folderPath: normalized.folderPath,
     folderUrl: normalized.folderUrl || "",
-    localFolderPath: normalized.localFolderPath || "",
     tenantId: normalized.tenantId,
     clientId: normalized.clientId,
     clientSecretConfigured: Boolean(normalized.clientSecret),
@@ -127,19 +120,13 @@ export function toPublicSharePointConfig(config: SharePointConfig): PublicShareP
 }
 
 export function hasCompleteSharePointCredentials(config: SharePointConfig): boolean {
-  const normalized = normalizeSharePointConfig(config);
   return Boolean(
-    normalized.siteUrl &&
-      normalized.folderPath &&
-      normalized.tenantId &&
-      normalized.clientId &&
-      normalized.clientSecret
+    config.siteUrl &&
+      config.folderPath &&
+      config.tenantId &&
+      config.clientId &&
+      config.clientSecret
   );
-}
-
-export function hasConfiguredSharePointFolder(config: SharePointConfig): boolean {
-  const normalized = normalizeSharePointConfig(config);
-  return Boolean(normalized.siteUrl && (normalized.folderUrl || normalized.folderPath));
 }
 
 export function getActiveFolderDisplay(config: SharePointConfig): string {
@@ -183,7 +170,6 @@ function sanitizeSharePointConfig(input: unknown): SharePointConfig {
     siteUrl: parsed.siteUrl,
     folderPath: parsed.folderPath || parsed.folderUrl,
     folderUrl: parsed.folderUrl || "",
-    localFolderPath: parsed.localFolderPath,
     tenantId: parsed.tenantId,
     clientId: parsed.clientId,
     clientSecret: parsed.clientSecret,
@@ -251,7 +237,6 @@ function normalizeSharePointConfig(config: SharePointConfig): SharePointConfig {
     siteUrl: parsedFolder?.siteUrl || config.siteUrl,
     folderPath: parsedFolder?.folderPath || config.folderPath || config.folderUrl || "",
     folderUrl: parsedFolder?.folderUrl || config.folderUrl || (isHttpUrl(config.folderPath) ? config.folderPath : ""),
-    localFolderPath: config.localFolderPath || "",
     documentLibraryName:
       parsedFolder?.documentLibraryName || config.documentLibraryName || "",
     lastConnectionStatus: config.lastConnectionStatus || "",

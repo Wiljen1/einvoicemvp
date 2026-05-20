@@ -1,6 +1,6 @@
 # E-Invoice MVP
 
-Lightweight local web app for an approved-source e-invoicing chatbot. It runs on each colleague's machine, uses that machine's local Codex installation, and searches only the configured SharePoint folder, a locally synced copy of that SharePoint folder, or the approved local mock `documents` folder.
+Lightweight local web app for an approved-source e-invoicing chatbot. It runs on each colleague's machine, uses that machine's local Codex installation, and searches only the configured SharePoint folder or the approved local mock `documents` folder.
 
 No paid hosting, centralized production server, cloud Codex API, or paid GPT API is required for the MVP.
 
@@ -54,7 +54,6 @@ Open `/settings/sharepoint` and enter:
 
 - SharePoint Site URL
 - SharePoint Folder URL or Folder Path
-- Local Synced SharePoint Folder Path, if you want no-secret local access through OneDrive sync
 - Tenant ID
 - Client ID
 - Client Secret
@@ -62,11 +61,9 @@ Open `/settings/sharepoint` and enter:
 
 Secrets are stored only server-side in `config/sharepoint.config.json`, which is ignored by Git. The browser only receives masked secret status.
 
-A SharePoint page that is open in your browser does not give the local Next.js server access to your browser cookies. For no-credential MVP use, sync the approved SharePoint folder with OneDrive and paste that local folder path into settings. The app will then read only direct files from that folder.
-
 ## Mock Documents
 
-If no SharePoint folder is selected and `ALLOW_MOCK_DOCUMENTS=true`, the app uses direct files in the local `documents` folder. Nested folders are ignored.
+If SharePoint credentials are incomplete and `ALLOW_MOCK_DOCUMENTS=true`, the app uses direct files in the local `documents` folder. Nested folders are ignored.
 
 ## Chat Behavior
 

@@ -22,7 +22,6 @@ interface SettingsPayload {
 interface SharePointFormState {
   siteUrl: string;
   folderPath: string;
-  localFolderPath: string;
   tenantId: string;
   clientId: string;
   clientSecret: string;
@@ -32,7 +31,6 @@ interface SharePointFormState {
 const emptyForm: SharePointFormState = {
   siteUrl: "",
   folderPath: "",
-  localFolderPath: "",
   tenantId: "",
   clientId: "",
   clientSecret: "",
@@ -63,7 +61,6 @@ export function SharePointSettingsForm() {
     setForm({
       siteUrl: config.siteUrl,
       folderPath: config.folderUrl || config.folderPath,
-      localFolderPath: config.localFolderPath,
       tenantId: config.tenantId,
       clientId: config.clientId,
       clientSecret: "",
@@ -120,10 +117,6 @@ export function SharePointSettingsForm() {
               value={form.siteUrl}
               onChange={(event) => updateField("siteUrl", event.target.value)}
             />
-            <span className="field-help">
-              Paste the approved SharePoint link here for display and approval. To read files without
-              app credentials, also set the local synced folder path below.
-            </span>
           </label>
 
           <label className="form-field">
@@ -143,21 +136,6 @@ export function SharePointSettingsForm() {
               value={form.tenantId}
               onChange={(event) => updateField("tenantId", event.target.value)}
             />
-            <span className="field-help">Optional for app-credential Graph access.</span>
-          </label>
-
-          <label className="form-field">
-            <span>Local Synced SharePoint Folder Path</span>
-            <input
-              className="text-field"
-              placeholder="/Users/you/Library/CloudStorage/OneDrive-Company/Electronic Invoicing"
-              value={form.localFolderPath}
-              onChange={(event) => updateField("localFolderPath", event.target.value)}
-            />
-            <span className="field-help">
-              No credentials needed. Sync the SharePoint folder with OneDrive, then paste the
-              local folder path here so the app can read the approved files from disk.
-            </span>
           </label>
 
           <label className="form-field">
@@ -167,7 +145,6 @@ export function SharePointSettingsForm() {
               value={form.clientId}
               onChange={(event) => updateField("clientId", event.target.value)}
             />
-            <span className="field-help">Optional for app-credential Graph access.</span>
           </label>
 
           <label className="form-field">
@@ -179,9 +156,7 @@ export function SharePointSettingsForm() {
               value={form.clientSecret}
               onChange={(event) => updateField("clientSecret", event.target.value)}
             />
-            <span className="field-help">
-              Optional. Secrets stay on the server and are never returned to the browser.
-            </span>
+            <span className="field-help">Secrets stay on the server and are never returned to the browser.</span>
           </label>
 
           <label className="form-field">

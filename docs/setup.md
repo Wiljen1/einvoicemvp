@@ -22,7 +22,6 @@ The MVP does not require a production server. If a production-style local build 
 
 - `SHAREPOINT_SITE_URL`
 - `SHAREPOINT_FOLDER_PATH`
-- `SHAREPOINT_LOCAL_FOLDER_PATH`
 - `SHAREPOINT_CLIENT_ID`
 - `SHAREPOINT_TENANT_ID`
 - `SHAREPOINT_CLIENT_SECRET`

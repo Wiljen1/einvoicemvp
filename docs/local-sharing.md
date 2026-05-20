@@ -27,7 +27,6 @@ Open `http://localhost:3000`.
 - Node.js and npm
 - Local Codex app or CLI
 - Access to the approved SharePoint folder
-- Either a local OneDrive-synced copy of that approved folder or SharePoint app credentials
 - Local `.env.local` configuration when automatic detection is not enough
 
 SharePoint secrets stay on each user's machine in `config/sharepoint.config.json`, which is ignored by Git.

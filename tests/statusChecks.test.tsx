@@ -66,28 +66,6 @@ describe("StatusChecks", () => {
     expect(screen.getByText("Folder: /documents")).toBeInTheDocument();
   });
 
-  it("shows local synced SharePoint folder when that source is active", async () => {
-    mockStatusFetch({
-      activeSource: "LOCAL_SYNC",
-      available: true,
-      displayName: "Local synced SharePoint folder",
-      folderUrl: null,
-      folderPath: "/Users/you/OneDrive/Electronic Invoicing",
-      configuredSharePointFolderUrl: "https://company.sharepoint.com/sites/einvoice/docs",
-      configuredSharePointFolderPath: "Shared Documents/Approved",
-      message: "Using local synced SharePoint folder"
-    });
-
-    render(
-      <StatusChecks processingStatus={idleStatus} refreshKey={0} onRefresh={() => undefined} />
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText("Active Source: Local synced SharePoint folder")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Folder: /Users/you/OneDrive/Electronic Invoicing")).toBeInTheDocument();
-  });
-
   it("shows configured SharePoint folder when mock is active", async () => {
     mockStatusFetch({
       activeSource: "MOCK",

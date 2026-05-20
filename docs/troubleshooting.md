@@ -22,15 +22,13 @@ Restart `npm run dev` after changing `.env.local`.
 
 Open `/settings/sharepoint`, check the configured folder, and use **Test Connection**.
 
-If you are already logged in to SharePoint in your browser, the local app still cannot reuse those browser cookies. Sync the approved SharePoint folder with OneDrive and paste the local synced folder path in `/settings/sharepoint`, or configure app credentials.
-
-For local development without a SharePoint source, leave credentials incomplete and keep:
+For local development, leave credentials incomplete and keep:
 
 ```bash
 ALLOW_MOCK_DOCUMENTS=true
 ```
 
-The app will use direct files in the local `documents` folder when no SharePoint folder is selected.
+The app will use direct files in the local `documents` folder.
 
 ## Stop A Running Codex Job
 
