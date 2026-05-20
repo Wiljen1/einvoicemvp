@@ -116,44 +116,34 @@ async function checkMockDocumentsAccess(): Promise<SharePointStatus> {
 
 async function listMockDocuments(): Promise<ApprovedDocument[]> {
   const documents: ApprovedDocument[] = [];
-  const queue = [defaultDocumentsDirectory];
+  const entries = await fs.readdir(defaultDocumentsDirectory, { withFileTypes: true });
 
-  while (queue.length > 0 && documents.length < MAX_DOCUMENTS) {
-    const currentDirectory = queue.shift() as string;
-    const entries = await fs.readdir(currentDirectory, { withFileTypes: true });
-
-    for (const entry of entries) {
-      if (documents.length >= MAX_DOCUMENTS) {
-        break;
-      }
-
-      const absolutePath = resolveInside(defaultDocumentsDirectory, path.relative(defaultDocumentsDirectory, path.join(currentDirectory, entry.name)));
-      const stats = await fs.lstat(absolutePath);
-
-      if (stats.isSymbolicLink()) {
-        continue;
-      }
-
-      if (stats.isDirectory()) {
-        queue.push(absolutePath);
-        continue;
-      }
-
-      if (!stats.isFile() || stats.size > MAX_DOCUMENT_BYTES) {
-        continue;
-      }
-
-      const extension = path.extname(entry.name).toLowerCase();
-      if (!READABLE_EXTENSIONS.has(extension)) {
-        continue;
-      }
-
-      documents.push({
-        fileName: path.relative(defaultDocumentsDirectory, absolutePath),
-        content: await fs.readFile(absolutePath, "utf8"),
-        sourcePath: absolutePath
-      });
+  for (const entry of entries) {
+    if (documents.length >= MAX_DOCUMENTS) {
+      break;
     }
+
+    const absolutePath = resolveInside(defaultDocumentsDirectory, entry.name);
+    const stats = await fs.lstat(absolutePath);
+
+    if (stats.isSymbolicLink() || stats.isDirectory() || !stats.isFile()) {
+      continue;
+    }
+
+    if (stats.size > MAX_DOCUMENT_BYTES) {
+      continue;
+    }
+
+    const extension = path.extname(entry.name).toLowerCase();
+    if (!READABLE_EXTENSIONS.has(extension)) {
+      continue;
+    }
+
+    documents.push({
+      fileName: entry.name,
+      content: await fs.readFile(absolutePath, "utf8"),
+      sourcePath: absolutePath
+    });
   }
 
   return documents;
@@ -169,6 +159,7 @@ async function listSharePointDocuments(
   const children = await getGraphFolderChildren(drive.id, config, token);
   const readableFiles = children.filter((item) => {
     const extension = path.extname(item.name).toLowerCase();
+    // Only direct files in the configured folder are approved. Nested folders are ignored.
     return item.file && READABLE_EXTENSIONS.has(extension);
   });
 

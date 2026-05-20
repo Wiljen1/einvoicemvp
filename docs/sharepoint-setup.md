@@ -17,12 +17,14 @@ Secrets are stored in `config/sharepoint.config.json`, which is ignored by Git. 
 
 ## Supported MVP Document Types
 
-The MVP extracts readable content from:
+The MVP extracts readable content from direct files in the configured folder:
 
 - `.txt`
 - `.md`
 - `.markdown`
 - `.csv`
 - `.json`
+
+Subfolders are ignored. To approve a different folder, update the active folder in `/settings/sharepoint`.
 
 PDF and Word extraction can be added later behind the existing SharePoint/document service boundary.

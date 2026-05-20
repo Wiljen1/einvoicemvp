@@ -26,4 +26,6 @@ This is a single Next.js app with server-side API routes and local services.
 
 ## Security Boundary
 
-The chatbot never browses the internet. It only reads from Microsoft Graph for the configured SharePoint folder, or from the local `documents` folder when mock fallback is enabled and SharePoint credentials are incomplete.
+The chatbot never browses the internet. It only reads direct files from Microsoft Graph for the configured SharePoint folder, or direct files from the local `documents` folder when mock fallback is enabled and SharePoint credentials are incomplete.
+
+Nested folders are not explored. If the approved folder contains subfolders with other names, those subfolders are ignored.
