@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+.next
+node_modules
+coverage
+dist
+build
+*.log
+.DS_Store
+*.tsbuildinfo
+config/sharepoint.config.json
