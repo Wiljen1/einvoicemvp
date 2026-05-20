@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import type { PublicSharePointConfig, SharePointStatus } from "@/types/sharepoint";
+import { useMicrosoftAuth } from "./MicrosoftAuthProvider";
 import { SharePointConnectionStatus } from "./SharePointConnectionStatus";
 import { SaveSettingsButton, TestConnectionButton } from "./SharePointSettingsButtons";
 
@@ -24,7 +25,6 @@ interface SharePointFormState {
   folderPath: string;
   tenantId: string;
   clientId: string;
-  clientSecret: string;
   documentLibraryName: string;
 }
 
@@ -33,20 +33,34 @@ const emptyForm: SharePointFormState = {
   folderPath: "",
   tenantId: "",
   clientId: "",
-  clientSecret: "",
   documentLibraryName: ""
 };
 
 export function SharePointSettingsForm() {
   const [form, setForm] = useState<SharePointFormState>(emptyForm);
   const [status, setStatus] = useState<SharePointStatus | null>(null);
-  const [secretConfigured, setSecretConfigured] = useState(false);
   const [message, setMessage] = useState("");
   const [action, setAction] = useState<"idle" | "saving" | "testing">("idle");
+  const microsoftAuth = useMicrosoftAuth();
+  const {
+    configured: microsoftConfigured,
+    isAuthenticated: microsoftSignedIn,
+    getAccessToken,
+    signIn,
+    refreshConfig
+  } = microsoftAuth;
 
   useEffect(() => {
     async function loadSettings() {
-      const response = await fetch("/api/settings/sharepoint", { cache: "no-store" });
+      const headers: HeadersInit = {};
+      if (microsoftConfigured && microsoftSignedIn) {
+        try {
+          headers.Authorization = `Bearer ${await getAccessToken()}`;
+        } catch {
+          // Settings can still load without a token; connection status will explain sign-in.
+        }
+      }
+      const response = await fetch("/api/settings/sharepoint", { cache: "no-store", headers });
       const payload = (await response.json()) as SettingsPayload;
       if (payload.ok && payload.data) {
         setFromPublicConfig(payload.data.config);
@@ -55,7 +69,7 @@ export function SharePointSettingsForm() {
     }
 
     loadSettings().catch(() => setMessage("Unable to load SharePoint settings."));
-  }, []);
+  }, [microsoftConfigured, microsoftSignedIn, getAccessToken]);
 
   function setFromPublicConfig(config: PublicSharePointConfig) {
     setForm({
@@ -63,10 +77,8 @@ export function SharePointSettingsForm() {
       folderPath: config.folderUrl || config.folderPath,
       tenantId: config.tenantId,
       clientId: config.clientId,
-      clientSecret: "",
       documentLibraryName: config.documentLibraryName
     });
-    setSecretConfigured(config.clientSecretConfigured);
   }
 
   function updateField<K extends keyof SharePointFormState>(key: K, value: SharePointFormState[K]) {
@@ -84,11 +96,25 @@ export function SharePointSettingsForm() {
     setMessage("");
 
     const endpoint = mode === "testing" ? "/api/settings/sharepoint/test" : "/api/settings/sharepoint";
+    const headers: HeadersInit = {
+      "Content-Type": "application/json"
+    };
+
+    if (mode === "testing" || microsoftSignedIn) {
+      if (!microsoftConfigured && mode === "testing") {
+        setMessage("Save Tenant ID and Client ID, then sign in with Microsoft before testing.");
+        setAction("idle");
+        return;
+      }
+
+      if (microsoftConfigured) {
+        headers.Authorization = `Bearer ${await getAccessToken({ interactive: mode === "testing" })}`;
+      }
+    }
+
     const response = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers,
       body: JSON.stringify(form)
     });
     const payload = (await response.json()) as SettingsPayload;
@@ -98,6 +124,7 @@ export function SharePointSettingsForm() {
     } else {
       setFromPublicConfig(payload.data.config);
       setStatus(payload.data.status);
+      refreshConfig();
       setMessage(mode === "testing" ? "Connection test complete." : "SharePoint settings saved.");
     }
 
@@ -147,17 +174,10 @@ export function SharePointSettingsForm() {
             />
           </label>
 
-          <label className="form-field">
-            <span>Client Secret</span>
-            <input
-              className="text-field"
-              placeholder={secretConfigured ? "Saved secret configured" : ""}
-              type="password"
-              value={form.clientSecret}
-              onChange={(event) => updateField("clientSecret", event.target.value)}
-            />
-            <span className="field-help">Secrets stay on the server and are never returned to the browser.</span>
-          </label>
+          <div className="field-help">
+            This MVP uses Microsoft delegated sign-in with PKCE. No client secret is needed or
+            accepted by the browser.
+          </div>
 
           <label className="form-field">
             <span>Optional Document Library Name</span>
@@ -170,6 +190,14 @@ export function SharePointSettingsForm() {
           </label>
 
           <div className="settings-actions">
+            <button
+              className="button secondary"
+              disabled={!microsoftConfigured || microsoftSignedIn || action !== "idle"}
+              type="button"
+              onClick={() => signIn().catch(() => setMessage("Microsoft sign-in did not complete."))}
+            >
+              Sign in with Microsoft
+            </button>
             <TestConnectionButton disabled={action !== "idle"} loading={action === "testing"} />
             <SaveSettingsButton disabled={action !== "idle"} loading={action === "saving"} />
             <button

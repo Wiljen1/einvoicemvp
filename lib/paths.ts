@@ -1,6 +1,25 @@
 import path from "node:path";
 
-export const projectRoot = process.cwd();
+export function getProjectRoot(): string {
+  return path.resolve(/* turbopackIgnore: true */ process.cwd());
+}
+
+export function getLocalDocumentsPath(): string {
+  const configuredPath = process.env.LOCAL_DOCUMENTS_PATH?.trim();
+  const projectRootPath = getProjectRoot();
+
+  if (!configuredPath) {
+    return path.join(projectRootPath, "documents");
+  }
+
+  if (path.isAbsolute(configuredPath)) {
+    return path.resolve(configuredPath);
+  }
+
+  return resolveInside(projectRootPath, configuredPath);
+}
+
+export const projectRoot = getProjectRoot();
 export const configDirectory = path.join(projectRoot, "config");
 export const guardrailsConfigPath = path.join(configDirectory, "guardrails.json");
 export const sharePointConfigPath = path.join(configDirectory, "sharepoint.config.json");

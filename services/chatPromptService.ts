@@ -12,7 +12,7 @@ export function buildChatPrompt(input: {
   const context = input.contextChunks
     .map(
       (chunk, index) =>
-        `[Source ${index + 1}: ${chunk.fileName}]\n${chunk.snippet.slice(0, 1200)}`
+        `[Source ${index + 1}: ${chunk.relativePath || chunk.fileName}]\n${chunk.snippet.slice(0, 1200)}`
     )
     .join("\n\n")
     .slice(0, MAX_CONTEXT_CHARS);

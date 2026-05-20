@@ -14,6 +14,8 @@ import type { ChatAnswer, ChatSessionStatus } from "@/types/chat";
 
 const sessions = getSessionStore();
 const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
+const noReadableDocumentsMessage =
+  "No readable documents were found in the configured local documents folder.";
 
 interface InternalChatSession extends ChatSessionStatus {
   question: string;
@@ -26,7 +28,7 @@ declare global {
   var __eInvoiceChatSessions: Map<string, InternalChatSession> | undefined;
 }
 
-export function startChatSession(question: string): ChatSessionStatus {
+export function startChatSession(question: string, accessToken?: string | null): ChatSessionStatus {
   const sessionId = crypto.randomUUID();
   const session: InternalChatSession = {
     sessionId,
@@ -44,7 +46,7 @@ export function startChatSession(question: string): ChatSessionStatus {
   };
 
   sessions.set(sessionId, session);
-  void runChatPipeline(session);
+  void runChatPipeline(session, accessToken || null);
 
   return toPublicStatus(session);
 }
@@ -71,7 +73,10 @@ export function cancelChatSession(sessionId: string): ChatSessionStatus | null {
   return toPublicStatus(session);
 }
 
-async function runChatPipeline(session: InternalChatSession): Promise<void> {
+async function runChatPipeline(
+  session: InternalChatSession,
+  accessToken: string | null
+): Promise<void> {
   try {
     updateSession(session, 8, "Checking Codex");
     const codex = await checkCodexStatus();
@@ -82,11 +87,11 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
     }
 
     updateSession(session, 20, "Checking SharePoint folder");
-    const documentsStatus = await getDocumentSourceStatus();
+    const documentsStatus = await getDocumentSourceStatus(undefined, { accessToken });
     ensureNotCancelled(session);
 
     if (!documentsStatus.available) {
-      throw new Error("No document source is currently available.");
+      throw new Error(documentsStatus.message || "No document source is currently available.");
     }
 
     updateSession(session, 32, "Loading guardrails");
@@ -94,7 +99,22 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
     ensureNotCancelled(session);
 
     updateSession(session, 45, "Searching documents");
-    const documents = await listApprovedDocuments();
+    let documents = await listApprovedDocuments(undefined, { accessToken });
+    if (documents.length === 0) {
+      documents = await listApprovedDocuments(undefined, { accessToken, forceRefresh: true });
+    }
+    ensureNotCancelled(session);
+
+    if (documents.length === 0) {
+      completeSession(session, {
+        answer: noReadableDocumentsMessage,
+        confidence: 0,
+        sources: [],
+        engine: codex.executionMode === "placeholder" ? "codex-placeholder" : "codex"
+      });
+      return;
+    }
+
     const contextChunks = searchDocuments(session.question, documents, { limit: 5 });
     ensureNotCancelled(session);
 
@@ -142,9 +162,11 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
     updateSession(session, 90, "Reading response");
     const confidence = estimateOverallConfidence(contextChunks);
     const sources = contextChunks.map((chunk) => ({
-      fileName: chunk.fileName,
+      fileName: chunk.relativePath || chunk.fileName,
+      relativePath: chunk.relativePath,
       snippet: chunk.snippet,
-      webUrl: chunk.webUrl
+      webUrl: chunk.webUrl,
+      pageCount: chunk.metadata?.pageCount
     }));
     const answer: ChatAnswer = {
       answer: codexResult.answer,

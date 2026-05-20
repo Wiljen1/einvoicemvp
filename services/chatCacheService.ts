@@ -26,6 +26,7 @@ export function buildChatCacheKey(input: ChatCacheInput): string {
     folderIdentifier: input.folderIdentifier,
     chunks: input.contextChunks.map((chunk) => ({
       fileName: chunk.fileName,
+      relativePath: chunk.relativePath,
       snippet: chunk.snippet,
       webUrl: chunk.webUrl,
       checksum: crypto.createHash("sha256").update(chunk.snippet).digest("hex")

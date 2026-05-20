@@ -7,6 +7,7 @@ import {
   searchDocuments
 } from "@/services/documentSearchService";
 import { fallbackMessage, loadGuardrails } from "@/services/guardrailsService";
+import { getBearerToken } from "@/services/microsoftAuthService";
 import { getDocumentSourceStatus, listApprovedDocuments } from "@/services/sharepointService";
 import type { ChatAnswer } from "@/types/chat";
 
@@ -15,9 +16,12 @@ export const runtime = "nodejs";
 const chatRequestSchema = z.object({
   question: z.string().trim().min(1).max(600)
 });
+const noReadableDocumentsMessage =
+  "No readable documents were found in the configured local documents folder.";
 
 export async function POST(request: Request) {
   let question = "";
+  const accessToken = getBearerToken(request);
 
   try {
     const body = chatRequestSchema.parse(await request.json());
@@ -35,7 +39,7 @@ export async function POST(request: Request) {
   const [guardrails, codex, documentsStatus] = await Promise.all([
     loadGuardrails(),
     detectCodexStatus(),
-    getDocumentSourceStatus()
+    getDocumentSourceStatus(undefined, { accessToken })
   ]);
 
   if (!codex.available) {
@@ -52,13 +56,31 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         ok: false,
-        error: "No document source is currently available."
+        error: documentsStatus.message || "No document source is currently available."
       },
       { status: 503 }
     );
   }
 
-  const documents = await listApprovedDocuments();
+  let documents = await listApprovedDocuments(undefined, { accessToken });
+  if (documents.length === 0) {
+    documents = await listApprovedDocuments(undefined, { accessToken, forceRefresh: true });
+  }
+
+  if (documents.length === 0) {
+    const data: ChatAnswer = {
+      answer: noReadableDocumentsMessage,
+      confidence: 0,
+      sources: [],
+      engine: codex.executionMode === "placeholder" ? "codex-placeholder" : "codex"
+    };
+
+    return NextResponse.json({
+      ok: true,
+      data
+    });
+  }
+
   const contextChunks = searchDocuments(question, documents, { limit: 5 });
 
   if (contextChunks.length === 0) {
@@ -88,9 +110,11 @@ export async function POST(request: Request) {
   });
   const confidence = estimateOverallConfidence(contextChunks);
   const sources = contextChunks.map((chunk) => ({
-    fileName: chunk.fileName,
+    fileName: chunk.relativePath || chunk.fileName,
+    relativePath: chunk.relativePath,
     snippet: chunk.snippet,
-    webUrl: chunk.webUrl
+    webUrl: chunk.webUrl,
+    pageCount: chunk.metadata?.pageCount
   }));
   const data: ChatAnswer = {
     answer: codexResult.answer,

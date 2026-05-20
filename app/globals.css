@@ -237,6 +237,27 @@ a {
   gap: 8px;
 }
 
+.document-file-list {
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.document-file-list summary {
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 800;
+}
+
+.document-file-list ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.document-file-list li {
+  overflow-wrap: anywhere;
+}
+
 .status-dot {
   display: inline-block;
   width: 10px;
@@ -500,6 +521,10 @@ a {
   align-items: center;
   margin: 0 0 6px;
   font-weight: 800;
+}
+
+.source-meta {
+  margin: 0 0 6px;
 }
 
 .source-item p {

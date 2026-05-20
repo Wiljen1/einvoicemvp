@@ -20,7 +20,7 @@ export function searchDocuments(
   const chunks = documents.flatMap(chunkDocument);
   const scored = chunks
     .map((chunk) => {
-      const haystack = `${chunk.fileName} ${chunk.snippet}`.toLowerCase();
+      const haystack = `${chunk.relativePath || chunk.fileName} ${chunk.snippet}`.toLowerCase();
       const score = queryTerms.reduce((total, term) => {
         const exactMatches = countOccurrences(haystack, term);
         const stemMatches =
@@ -47,7 +47,10 @@ export function estimateOverallConfidence(results: SearchResult[]): number {
   }
 
   const best = results[0].confidence;
-  const sourceBonus = Math.min(0.12, new Set(results.map((result) => result.fileName)).size * 0.04);
+  const sourceBonus = Math.min(
+    0.12,
+    new Set(results.map((result) => result.relativePath || result.fileName)).size * 0.04
+  );
 
   return roundConfidence(Math.min(0.97, best + sourceBonus));
 }
@@ -64,6 +67,8 @@ function chunkDocument(document: ApprovedDocument): SearchResult[] {
 
     chunks.push({
       fileName: document.fileName,
+      relativePath: document.relativePath,
+      metadata: document.metadata,
       sourcePath: document.sourcePath,
       webUrl: document.webUrl,
       snippet,

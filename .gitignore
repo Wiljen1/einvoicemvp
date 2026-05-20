@@ -12,3 +12,8 @@ build
 config/sharepoint.config.json
 artifacts/cache/*
 artifacts/codex-operators/*
+
+# Keep approved local test fixtures tracked, but do not commit synced client document drops.
+documents/*
+!documents/e-invoicing-overview.md
+!documents/sharepoint-governance.md

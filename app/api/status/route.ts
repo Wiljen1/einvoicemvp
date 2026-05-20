@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 import { detectCodexStatus } from "@/services/codexService";
+import { getBearerToken } from "@/services/microsoftAuthService";
 import { checkSharePointAccess, getDocumentSourceStatus } from "@/services/sharepointService";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const accessToken = getBearerToken(request);
   const [codex, sharepoint, documents] = await Promise.all([
     detectCodexStatus(),
-    checkSharePointAccess(),
-    getDocumentSourceStatus()
+    checkSharePointAccess(undefined, { accessToken }),
+    getDocumentSourceStatus(undefined, { accessToken })
   ]);
 
   return NextResponse.json({

@@ -4,6 +4,7 @@ import {
   loadSharePointConfig,
   toPublicSharePointConfig
 } from "@/services/sharepointConfigService";
+import { getBearerToken } from "@/services/microsoftAuthService";
 import { checkSharePointAccess, getDocumentSourceStatus } from "@/services/sharepointService";
 
 export const runtime = "nodejs";
@@ -11,12 +12,13 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+    const accessToken = getBearerToken(request);
     const config = Object.keys(body || {}).length > 0
       ? await buildDraftSharePointConfig(body)
       : await loadSharePointConfig();
     const [status, documents] = await Promise.all([
-      checkSharePointAccess(config),
-      getDocumentSourceStatus(config)
+      checkSharePointAccess(config, { accessToken }),
+      getDocumentSourceStatus(config, { accessToken })
     ]);
 
     return NextResponse.json({

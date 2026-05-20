@@ -30,6 +30,10 @@ export function SharePointConnectionStatus({ status }: SharePointConnectionStatu
           ? "SharePoint folder connected"
           : status?.mode === "mock"
             ? "Using local mock documents"
+            : status?.mode === "auth_required"
+              ? "Microsoft sign-in required"
+            : status?.mode === "access_denied"
+              ? "SharePoint access denied"
             : "Unable to access SharePoint folder"}
       </div>
       <p className="folder-path">{status?.activeFolder || "No active folder configured"}</p>

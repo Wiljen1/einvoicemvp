@@ -1,11 +1,12 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { defaultDocumentsDirectory } from "@/lib/paths";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   testSharePointFolderUrl,
   toPublicSharePointConfig
 } from "@/services/sharepointConfigService";
+import { resetDocumentIndexForTests } from "@/services/documentIndexService";
 import {
   checkSharePointAccess,
   getDocumentSourceStatus,
@@ -14,11 +15,21 @@ import {
 import type { SharePointConfig } from "@/types/sharepoint";
 
 describe("sharepointService", () => {
-  const nestedFolder = path.join(defaultDocumentsDirectory, "_not-approved-nested");
+  let tempDocumentsPath = "";
+  let nestedFolder = "";
+
+  beforeEach(async () => {
+    tempDocumentsPath = await fs.mkdtemp(path.join(os.tmpdir(), "einvoice-sp-docs-"));
+    nestedFolder = path.join(tempDocumentsPath, "_nested-approved");
+    vi.stubEnv("LOCAL_DOCUMENTS_PATH", tempDocumentsPath);
+    resetDocumentIndexForTests();
+  });
 
   afterEach(async () => {
-    await fs.rm(nestedFolder, { force: true, recursive: true });
+    await fs.rm(tempDocumentsPath, { force: true, recursive: true });
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    resetDocumentIndexForTests();
   });
 
   it("uses the approved mock folder when SharePoint credentials are incomplete", async () => {
@@ -29,18 +40,19 @@ describe("sharepointService", () => {
       clientId: "",
       clientSecret: ""
     };
+    await fs.writeFile(path.join(tempDocumentsPath, "approved.md"), "Approved local content.");
     const status = await checkSharePointAccess(config);
 
     expect(status.available).toBe(true);
     expect(status.mode).toBe("mock");
-    expect(status.activeFolder).toContain("documents");
+    expect(status.activeFolder).toBe(tempDocumentsPath);
   });
 
-  it("does not read files from nested folders in the mock approved folder", async () => {
+  it("reads files from nested folders in the mock approved folder", async () => {
     await fs.mkdir(nestedFolder, { recursive: true });
     await fs.writeFile(
-      path.join(nestedFolder, "not-approved.md"),
-      "SECRET_NESTED_CONTEXT: this must never be searched."
+      path.join(nestedFolder, "nested-approved.md"),
+      "NESTED_APPROVED_CONTEXT: this should be searched."
     );
 
     const documents = await listApprovedDocuments({
@@ -51,11 +63,11 @@ describe("sharepointService", () => {
       clientSecret: ""
     });
 
-    expect(documents.some((document) => document.fileName.includes("_not-approved-nested"))).toBe(
-      false
+    expect(documents.some((document) => document.relativePath === "_nested-approved/nested-approved.md")).toBe(
+      true
     );
-    expect(documents.some((document) => document.content.includes("SECRET_NESTED_CONTEXT"))).toBe(
-      false
+    expect(documents.some((document) => document.content.includes("NESTED_APPROVED_CONTEXT"))).toBe(
+      true
     );
   });
 
@@ -66,11 +78,11 @@ describe("sharepointService", () => {
       folderPath: "Shared Documents/Approved",
       tenantId: "tenant",
       clientId: "client",
-      clientSecret: "secret"
+      clientSecret: ""
     };
-    const status = await getDocumentSourceStatus(config);
+    const status = await getDocumentSourceStatus(config, { accessToken: "delegated-token" });
 
-    expect(status.activeSource).toBe("SHAREPOINT");
+    expect(status.activeSource).toBe("GRAPH_SHAREPOINT");
     expect(status.displayName).toBe("SharePoint folder");
     expect(status.folderUrl).toBe(
       "https://company.sharepoint.com/sites/einvoice/Shared Documents/Approved"
@@ -81,7 +93,8 @@ describe("sharepointService", () => {
     );
   });
 
-  it("reports mock only when mock documents are active", async () => {
+  it("reports the local folder when local documents are active", async () => {
+    await fs.writeFile(path.join(tempDocumentsPath, "approved.md"), "Approved local content.");
     const status = await getDocumentSourceStatus({
       siteUrl: "",
       folderPath: "",
@@ -90,12 +103,13 @@ describe("sharepointService", () => {
       clientSecret: ""
     });
 
-    expect(status.activeSource).toBe("MOCK");
+    expect(status.activeSource).toBe("LOCAL_SYNCED_FOLDER");
     expect(status.folderUrl).toBeNull();
-    expect(status.folderPath).toContain("documents");
+    expect(status.folderPath).toBe(tempDocumentsPath);
   });
 
-  it("keeps the configured SharePoint folder visible when mock is active", async () => {
+  it("keeps the configured SharePoint folder visible when local documents are active", async () => {
+    await fs.writeFile(path.join(tempDocumentsPath, "approved.md"), "Approved local content.");
     const status = await getDocumentSourceStatus({
       siteUrl: "https://company.sharepoint.com/sites/einvoice",
       folderPath: "Shared Documents/Approved",
@@ -104,13 +118,13 @@ describe("sharepointService", () => {
       clientSecret: ""
     });
 
-    expect(status.activeSource).toBe("MOCK");
+    expect(status.activeSource).toBe("LOCAL_SYNCED_FOLDER");
     expect(status.configuredSharePointFolderUrl).toBe(
       "https://company.sharepoint.com/sites/einvoice/Shared Documents/Approved"
     );
   });
 
-  it("masks client secrets in public SharePoint config", () => {
+  it("does not expose legacy client secrets in public SharePoint config", () => {
     const publicConfig = toPublicSharePointConfig({
       siteUrl: "https://company.sharepoint.com/sites/einvoice",
       folderPath: "Shared Documents/Approved",
@@ -119,9 +133,22 @@ describe("sharepointService", () => {
       clientSecret: "super-secret"
     });
 
-    expect(publicConfig.clientSecretConfigured).toBe(true);
-    expect(publicConfig.clientSecretMasked).toBe("********");
     expect(JSON.stringify(publicConfig)).not.toContain("super-secret");
+    expect(JSON.stringify(publicConfig)).not.toContain("clientSecret");
+  });
+
+  it("requires Microsoft sign-in when SharePoint is configured without a delegated token", async () => {
+    const status = await checkSharePointAccess({
+      siteUrl: "https://company.sharepoint.com/sites/einvoice",
+      folderPath: "Shared Documents/Approved",
+      tenantId: "tenant",
+      clientId: "client",
+      clientSecret: ""
+    });
+
+    expect(status.available).toBe(false);
+    expect(status.mode).toBe("auth_required");
+    expect(status.message).toContain("Microsoft sign-in is required");
   });
 
   it("normalizes copied SharePoint folder links into site, library, and folder path", () => {
@@ -150,8 +177,8 @@ describe("sharepointService", () => {
       folderPath: "Shared Documents/Approved",
       tenantId: "tenant",
       clientId: "client",
-      clientSecret: "secret"
-    });
+      clientSecret: ""
+    }, { accessToken: "delegated-token" });
 
     expect(documents).toHaveLength(1);
     expect(documents[0].fileName).toBe("approved.md");
@@ -163,10 +190,6 @@ function mockSuccessfulGraphAccess() {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
-      if (url.includes("login.microsoftonline.com")) {
-        return jsonResponse({ access_token: "token" });
-      }
-
       if (url.includes("/sites/") && !url.includes("/drive")) {
         return jsonResponse({ id: "site-id" });
       }

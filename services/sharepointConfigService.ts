@@ -45,7 +45,10 @@ export const emptySharePointConfig: SharePointConfig = {
 };
 
 export async function loadSharePointConfig(): Promise<SharePointConfig> {
-  const fromFile = await loadSharePointConfigFromFile();
+  const fromFile =
+    process.env.SHAREPOINT_DISABLE_LOCAL_CONFIG === "true"
+      ? emptySharePointConfig
+      : await loadSharePointConfigFromFile();
 
   return sanitizeSharePointConfig({
     siteUrl: fromFile.siteUrl || process.env.SHAREPOINT_SITE_URL || "",
@@ -53,7 +56,7 @@ export async function loadSharePointConfig(): Promise<SharePointConfig> {
     folderUrl: fromFile.folderUrl || "",
     tenantId: fromFile.tenantId || process.env.SHAREPOINT_TENANT_ID || "",
     clientId: fromFile.clientId || process.env.SHAREPOINT_CLIENT_ID || "",
-    clientSecret: fromFile.clientSecret || process.env.SHAREPOINT_CLIENT_SECRET || "",
+    clientSecret: fromFile.clientSecret || "",
     documentLibraryName:
       fromFile.documentLibraryName || process.env.SHAREPOINT_DOCUMENT_LIBRARY_NAME || "",
     lastConnectionStatus: fromFile.lastConnectionStatus || "",
@@ -110,8 +113,6 @@ export function toPublicSharePointConfig(config: SharePointConfig): PublicShareP
     folderUrl: normalized.folderUrl || "",
     tenantId: normalized.tenantId,
     clientId: normalized.clientId,
-    clientSecretConfigured: Boolean(normalized.clientSecret),
-    clientSecretMasked: config.clientSecret ? "********" : "",
     documentLibraryName: normalized.documentLibraryName || "",
     activeFolder: getActiveFolderDisplay(normalized),
     lastConnectionStatus: normalized.lastConnectionStatus || "",
@@ -120,13 +121,7 @@ export function toPublicSharePointConfig(config: SharePointConfig): PublicShareP
 }
 
 export function hasCompleteSharePointCredentials(config: SharePointConfig): boolean {
-  return Boolean(
-    config.siteUrl &&
-      config.folderPath &&
-      config.tenantId &&
-      config.clientId &&
-      config.clientSecret
-  );
+  return Boolean(config.siteUrl && config.folderPath && config.tenantId && config.clientId);
 }
 
 export function getActiveFolderDisplay(config: SharePointConfig): string {
@@ -186,13 +181,11 @@ function mergeSharePointConfigInput(
   includeUpdatedAt: boolean
 ): SharePointConfig {
   const parsed = sharePointConfigSchema.parse(input);
-  const keepExistingSecret =
-    parsed.clientSecret === "" || parsed.clientSecret === "********" || parsed.clientSecret === "••••••••";
 
   return sanitizeSharePointConfig({
     ...existing,
     ...parsed,
-    clientSecret: keepExistingSecret ? existing.clientSecret : parsed.clientSecret,
+    clientSecret: "",
     updatedAt: includeUpdatedAt ? new Date().toISOString() : existing.updatedAt
   });
 }

@@ -20,12 +20,13 @@ export function SourceList({ sources }: SourceListProps) {
             <FileText aria-hidden="true" size={16} />
             {source.webUrl ? (
               <a href={source.webUrl} rel="noreferrer" target="_blank">
-                {source.fileName}
+                {source.relativePath || source.fileName}
               </a>
             ) : (
-              source.fileName
+              source.relativePath || source.fileName
             )}
           </h3>
+          {source.pageCount ? <p className="source-meta">{source.pageCount} pages</p> : null}
           <p>{source.snippet}</p>
         </article>
       ))}

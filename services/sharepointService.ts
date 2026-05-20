@@ -1,21 +1,26 @@
-import fs from "node:fs/promises";
 import path from "node:path";
-import { defaultDocumentsDirectory, resolveInside } from "@/lib/paths";
 import type { ApprovedDocument } from "@/types/document";
 import type { DocumentSourceStatus, SharePointConfig, SharePointStatus } from "@/types/sharepoint";
+import { extractPdfTextFromBuffer } from "./documentExtractors/pdfExtractor";
+import {
+  getLocalApprovedDocuments,
+  getLocalDocumentIndexStatus
+} from "./documentIndexService";
 import {
   getActiveFolderDisplay,
   hasCompleteSharePointCredentials,
   loadSharePointConfig
 } from "./sharepointConfigService";
 
-const READABLE_EXTENSIONS = new Set([".txt", ".md", ".markdown", ".csv", ".json"]);
-const MAX_DOCUMENTS = 50;
+const READABLE_EXTENSIONS = new Set([".txt", ".md", ".markdown", ".csv", ".json", ".pdf"]);
 const MAX_DOCUMENT_BYTES = 250_000;
+const MAX_SHAREPOINT_DOCUMENTS = 50;
 const GRAPH_TIMEOUT_MS = 10_000;
 
-interface GraphTokenResponse {
-  access_token?: string;
+interface SharePointAccessOptions {
+  accessToken?: string | null;
+  forceRefresh?: boolean;
+  metadataOnly?: boolean;
 }
 
 interface GraphSiteResponse {
@@ -28,10 +33,13 @@ interface GraphDriveResponse {
 }
 
 interface GraphDriveItem {
+  id?: string;
   name: string;
   file?: unknown;
   folder?: unknown;
   webUrl?: string;
+  size?: number;
+  lastModifiedDateTime?: string;
   "@microsoft.graph.downloadUrl"?: string;
 }
 
@@ -40,12 +48,36 @@ interface GraphChildrenResponse {
   "@odata.nextLink"?: string;
 }
 
-export async function checkSharePointAccess(config?: SharePointConfig): Promise<SharePointStatus> {
+class GraphFetchError extends Error {
+  constructor(
+    message: string,
+    readonly status: number
+  ) {
+    super(message);
+  }
+}
+
+export async function checkSharePointAccess(
+  config?: SharePointConfig,
+  options?: SharePointAccessOptions
+): Promise<SharePointStatus> {
   const effectiveConfig = config || (await loadSharePointConfig());
 
   if (hasCompleteSharePointCredentials(effectiveConfig)) {
+    if (!options?.accessToken) {
+      return {
+        available: false,
+        message: "Microsoft sign-in is required to access the configured SharePoint folder.",
+        activeFolder: getActiveFolderDisplay(effectiveConfig),
+        mode: "auth_required"
+      };
+    }
+
     try {
-      await listSharePointDocuments(effectiveConfig, { metadataOnly: true });
+      await listSharePointDocuments(effectiveConfig, {
+        accessToken: options.accessToken,
+        metadataOnly: true
+      });
       return {
         available: true,
         message: "SharePoint folder connected",
@@ -53,23 +85,15 @@ export async function checkSharePointAccess(config?: SharePointConfig): Promise<
         mode: "sharepoint"
       };
     } catch (error) {
-      if (allowMockDocuments()) {
-        const mockStatus = await checkMockDocumentsAccess();
-        if (mockStatus.available) {
-          return {
-            available: true,
-            message: `SharePoint unavailable; using local mock documents. ${cleanError(error)}`,
-            activeFolder: mockStatus.activeFolder,
-            mode: "mock"
-          };
-        }
-      }
+      const denied = isAccessDenied(error);
 
       return {
         available: false,
-        message: `Unable to access SharePoint folder: ${cleanError(error)}`,
+        message: denied
+          ? "You do not currently have access to this SharePoint folder."
+          : `The configured SharePoint folder could not be accessed with your current permissions. ${cleanError(error)}`,
         activeFolder: getActiveFolderDisplay(effectiveConfig),
-        mode: "unavailable"
+        mode: denied ? "access_denied" : "unavailable"
       };
     }
   }
@@ -90,37 +114,80 @@ export async function checkSharePointAccess(config?: SharePointConfig): Promise<
 }
 
 export async function getDocumentSourceStatus(
-  config?: SharePointConfig
+  config?: SharePointConfig,
+  options?: SharePointAccessOptions
 ): Promise<DocumentSourceStatus> {
-  const status = await checkSharePointAccess(config);
+  const status = await checkSharePointAccess(config, options);
 
   if (status.mode === "sharepoint") {
     const effectiveConfig = config || (await loadSharePointConfig());
+    const graphFiles = await listSharePointDocuments(effectiveConfig, {
+      accessToken: options?.accessToken,
+      metadataOnly: true
+    });
+
     return {
-      activeSource: "SHAREPOINT",
+      activeSource: "GRAPH_SHAREPOINT",
       available: true,
       displayName: "SharePoint folder",
       folderUrl: getActiveFolderDisplay(effectiveConfig) || null,
       folderPath: effectiveConfig.folderPath,
       configuredSharePointFolderUrl: getActiveFolderDisplay(effectiveConfig) || null,
       configuredSharePointFolderPath: effectiveConfig.folderPath,
+      fileCount: graphFiles.length,
+      skippedFileCount: 0,
+      indexedCount: graphFiles.length,
+      skippedCount: 0,
+      supportedExtensions: [...READABLE_EXTENSIONS].sort(),
+      lastIndexedAt: new Date().toISOString(),
+      indexedFiles: graphFiles.map((file) => ({
+        id: file.id || file.relativePath || file.fileName,
+        fileName: file.fileName,
+        relativePath: file.relativePath || file.fileName,
+        absolutePath: file.webUrl || "",
+        extension: file.extension || path.extname(file.fileName).toLowerCase(),
+        path: file.webUrl || file.sourcePath,
+        size: file.metadata?.size || 0,
+        lastModified: file.metadata?.lastModified || "",
+        sourceType: "GRAPH_SHAREPOINT" as const,
+        metadata: {
+          size: file.metadata?.size || 0,
+          lastModified: file.metadata?.lastModified || "",
+          pageCount: file.metadata?.pageCount
+        }
+      })),
+      skippedFiles: [],
       message: "SharePoint folder connected"
     };
   }
 
   if (status.mode === "mock") {
     const effectiveConfig = config || (await loadSharePointConfig());
+    const localStatus = await getLocalDocumentIndexStatus({ force: true });
     return {
-      activeSource: "MOCK",
-      available: true,
-      displayName: "Local mock documents",
+      activeSource: localStatus.activeSource,
+      available: localStatus.available,
+      displayName:
+        localStatus.activeSource === "LOCAL_SYNCED_FOLDER"
+          ? "Local synced documents"
+          : "Local documents",
       folderUrl: null,
-      folderPath: defaultDocumentsDirectory,
+      folderPath: localStatus.folderPath,
       configuredSharePointFolderUrl: getActiveFolderDisplay(effectiveConfig) || null,
       configuredSharePointFolderPath: effectiveConfig.folderPath,
+      fileCount: localStatus.fileCount,
+      skippedFileCount: localStatus.skippedFileCount,
+      indexedCount: localStatus.indexedCount,
+      skippedCount: localStatus.skippedCount,
+      recursive: localStatus.recursive,
+      maxDepth: localStatus.maxDepth,
+      supportedExtensions: localStatus.supportedExtensions,
+      lastIndexedAt: localStatus.lastIndexedAt,
+      indexedFiles: localStatus.indexedFiles,
+      skippedFiles: localStatus.skippedFiles,
       message: status.message.includes("SharePoint unavailable")
         ? status.message
-        : "Using local mock documents"
+        : localStatus.message
     };
   }
 
@@ -129,98 +196,66 @@ export async function getDocumentSourceStatus(
     available: false,
     displayName: "No document source",
     folderUrl: null,
-    folderPath: "",
-    configuredSharePointFolderUrl: null,
-    configuredSharePointFolderPath: "",
-    message: "No document source is currently available."
+    folderPath: status.activeFolder || "",
+    configuredSharePointFolderUrl: status.activeFolder || null,
+    configuredSharePointFolderPath: (config || (await loadSharePointConfig())).folderPath,
+    message: status.message || "No document source is currently available."
   };
 }
 
-export async function listApprovedDocuments(config?: SharePointConfig): Promise<ApprovedDocument[]> {
+export async function listApprovedDocuments(
+  config?: SharePointConfig,
+  options?: SharePointAccessOptions
+): Promise<ApprovedDocument[]> {
   const effectiveConfig = config || (await loadSharePointConfig());
 
   if (hasCompleteSharePointCredentials(effectiveConfig)) {
-    try {
-      return await listSharePointDocuments(effectiveConfig);
-    } catch {
-      if (allowMockDocuments()) {
-        return listMockDocuments();
-      }
-
+    if (!options?.accessToken) {
       return [];
     }
+
+    return listSharePointDocuments(effectiveConfig, {
+      accessToken: options.accessToken,
+      metadataOnly: options.metadataOnly
+    });
   }
 
   if (allowMockDocuments()) {
-    return listMockDocuments();
+    return getLocalApprovedDocuments({ force: options?.forceRefresh ?? true });
   }
 
   return [];
 }
 
 async function checkMockDocumentsAccess(): Promise<SharePointStatus> {
-  try {
-    const stats = await fs.stat(defaultDocumentsDirectory);
-    if (!stats.isDirectory()) {
-      throw new Error("Mock documents path is not a directory.");
-    }
+  const status = await getLocalDocumentIndexStatus({ force: true });
 
+  if (status.available) {
     return {
       available: true,
-      message: "Local approved mock folder connected",
-      activeFolder: defaultDocumentsDirectory,
+      message: status.message,
+      activeFolder: status.folderPath,
       mode: "mock"
     };
-  } catch {
-    return {
-      available: false,
-      message: "SharePoint folder not accessible",
-      activeFolder: defaultDocumentsDirectory,
-      mode: "unavailable"
-    };
-  }
-}
-
-async function listMockDocuments(): Promise<ApprovedDocument[]> {
-  const documents: ApprovedDocument[] = [];
-  const entries = await fs.readdir(defaultDocumentsDirectory, { withFileTypes: true });
-
-  for (const entry of entries) {
-    if (documents.length >= MAX_DOCUMENTS) {
-      break;
-    }
-
-    const absolutePath = resolveInside(defaultDocumentsDirectory, entry.name);
-    const stats = await fs.lstat(absolutePath);
-
-    if (stats.isSymbolicLink() || stats.isDirectory() || !stats.isFile()) {
-      continue;
-    }
-
-    if (stats.size > MAX_DOCUMENT_BYTES) {
-      continue;
-    }
-
-    const extension = path.extname(entry.name).toLowerCase();
-    if (!READABLE_EXTENSIONS.has(extension)) {
-      continue;
-    }
-
-    documents.push({
-      fileName: entry.name,
-      content: await fs.readFile(absolutePath, "utf8"),
-      sourcePath: absolutePath
-    });
   }
 
-  return documents;
+  return {
+    available: false,
+    message: status.message,
+    activeFolder: status.folderPath,
+    mode: "unavailable"
+  };
 }
 
 async function listSharePointDocuments(
   config: SharePointConfig,
-  options?: { metadataOnly?: boolean }
+  options: SharePointAccessOptions
 ): Promise<ApprovedDocument[]> {
-  const token = await getGraphAccessToken(config);
+  if (!options.accessToken) {
+    throw new Error("Microsoft sign-in is required to access the configured SharePoint folder.");
+  }
+
+  const token = options.accessToken;
   const site = await getGraphSite(config, token);
   const drive = await getGraphDrive(site.id, config, token);
   const children = await getGraphFolderChildren(drive.id, config, token);
@@ -230,56 +265,28 @@ async function listSharePointDocuments(
     return item.file && READABLE_EXTENSIONS.has(extension);
   });
 
-  if (options?.metadataOnly) {
-    return [];
+  if (options.metadataOnly) {
+    return readableFiles.slice(0, MAX_SHAREPOINT_DOCUMENTS).map((item) =>
+      toApprovedGraphDocument(config, item, "")
+    );
   }
 
   const documents: ApprovedDocument[] = [];
-  for (const item of readableFiles.slice(0, MAX_DOCUMENTS)) {
+  for (const item of readableFiles.slice(0, MAX_SHAREPOINT_DOCUMENTS)) {
     const downloadUrl = item["@microsoft.graph.downloadUrl"];
     if (!downloadUrl) {
       continue;
     }
 
-    const content = await fetchText(downloadUrl, token);
-    documents.push({
-      fileName: item.name,
-      content: content.slice(0, MAX_DOCUMENT_BYTES),
-      sourcePath: getActiveFolderDisplay(config),
-      webUrl: item.webUrl
-    });
+    const content = await fetchDocumentContent(downloadUrl, token, path.extname(item.name).toLowerCase());
+    if (!content.text) {
+      continue;
+    }
+
+    documents.push(toApprovedGraphDocument(config, item, content.text, content.metadata));
   }
 
   return documents;
-}
-
-async function getGraphAccessToken(config: SharePointConfig): Promise<string> {
-  const response = await fetchWithTimeout(
-    `https://login.microsoftonline.com/${encodeURIComponent(config.tenantId)}/oauth2/v2.0/token`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: new URLSearchParams({
-        client_id: config.clientId,
-        client_secret: config.clientSecret || "",
-        grant_type: "client_credentials",
-        scope: "https://graph.microsoft.com/.default"
-      })
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`Microsoft identity returned ${response.status}.`);
-  }
-
-  const body = (await response.json()) as GraphTokenResponse;
-  if (!body.access_token) {
-    throw new Error("Microsoft identity did not return an access token.");
-  }
-
-  return body.access_token;
 }
 
 async function getGraphSite(config: SharePointConfig, token: string): Promise<GraphSiteResponse> {
@@ -332,16 +339,45 @@ async function getGraphFolderChildren(
     : `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(driveId)}/root/children`;
 
   const items: GraphDriveItem[] = [];
-  while (endpoint && items.length < MAX_DOCUMENTS) {
+  while (endpoint && items.length < MAX_SHAREPOINT_DOCUMENTS) {
     const page = await fetchGraphJson<GraphChildrenResponse>(endpoint, token);
     items.push(...(page.value || []));
     endpoint = page["@odata.nextLink"] || "";
   }
 
-  return items.slice(0, MAX_DOCUMENTS);
+  return items.slice(0, MAX_SHAREPOINT_DOCUMENTS);
 }
 
-async function fetchText(downloadUrl: string, token: string): Promise<string> {
+function toApprovedGraphDocument(
+  config: SharePointConfig,
+  item: GraphDriveItem,
+  content: string,
+  metadata?: ApprovedDocument["metadata"]
+): ApprovedDocument {
+  const extension = path.extname(item.name).toLowerCase();
+
+  return {
+    id: item.id,
+    fileName: item.name,
+    relativePath: item.name,
+    extension,
+    content: content.slice(0, MAX_DOCUMENT_BYTES),
+    sourcePath: getActiveFolderDisplay(config),
+    webUrl: item.webUrl,
+    sourceType: "GRAPH_SHAREPOINT",
+    metadata: {
+      size: item.size,
+      lastModified: item.lastModifiedDateTime,
+      ...metadata
+    }
+  };
+}
+
+async function fetchDocumentContent(
+  downloadUrl: string,
+  token: string,
+  extension: string
+): Promise<{ text: string; metadata?: ApprovedDocument["metadata"] }> {
   const response = await fetchWithTimeout(downloadUrl, {
     headers: {
       Authorization: `Bearer ${token}`
@@ -352,7 +388,25 @@ async function fetchText(downloadUrl: string, token: string): Promise<string> {
     throw new Error(`Unable to download document content: ${response.status}.`);
   }
 
-  return response.text();
+  if (extension === ".pdf") {
+    try {
+      const bytes = Buffer.from(await response.arrayBuffer());
+      const pdf = await extractPdfTextFromBuffer(bytes);
+
+      if (!pdf.text) {
+        return { text: "" };
+      }
+
+      return {
+        text: pdf.text,
+        metadata: pdf.metadata
+      };
+    } catch {
+      return { text: "" };
+    }
+  }
+
+  return { text: await response.text() };
 }
 
 async function fetchGraphJson<T>(url: string, token: string): Promise<T> {
@@ -364,7 +418,7 @@ async function fetchGraphJson<T>(url: string, token: string): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`Microsoft Graph returned ${response.status}.`);
+    throw new GraphFetchError(`Microsoft Graph returned ${response.status}.`, response.status);
   }
 
   return response.json() as Promise<T>;
@@ -430,6 +484,10 @@ function cleanError(error: unknown): string {
   }
 
   return "Unknown error.";
+}
+
+function isAccessDenied(error: unknown): boolean {
+  return error instanceof GraphFetchError && (error.status === 401 || error.status === 403);
 }
 
 function isHttpUrl(value: string): boolean {
