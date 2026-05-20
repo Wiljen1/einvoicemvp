@@ -2,6 +2,7 @@ export interface SharePointConfig {
   siteUrl: string;
   folderPath: string;
   folderUrl?: string;
+  localFolderPath?: string;
   tenantId: string;
   clientId: string;
   clientSecret?: string;
@@ -15,6 +16,7 @@ export interface PublicSharePointConfig {
   siteUrl: string;
   folderPath: string;
   folderUrl: string;
+  localFolderPath: string;
   tenantId: string;
   clientId: string;
   clientSecretConfigured: boolean;
@@ -25,8 +27,8 @@ export interface PublicSharePointConfig {
   lastCheckedAt: string;
 }
 
-export type ApprovedSourceMode = "sharepoint" | "mock" | "unavailable";
-export type DocumentSourceType = "SHAREPOINT" | "MOCK" | "NONE";
+export type ApprovedSourceMode = "sharepoint" | "local_sync" | "mock" | "unavailable";
+export type DocumentSourceType = "SHAREPOINT" | "LOCAL_SYNC" | "MOCK" | "NONE";
 
 export interface SharePointStatus {
   available: boolean;

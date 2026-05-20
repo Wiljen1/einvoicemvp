@@ -9,6 +9,7 @@ interface SharePointConnectionStatusProps {
 
 export function SharePointConnectionStatus({ status }: SharePointConnectionStatusProps) {
   const sharePointConnected = status?.mode === "sharepoint" && status.available;
+  const localSyncConnected = status?.mode === "local_sync" && status.available;
   const available = Boolean(status?.available);
   const Icon = available ? FolderCheck : FolderX;
 
@@ -25,9 +26,11 @@ export function SharePointConnectionStatus({ status }: SharePointConnectionStatu
           </p>
         </div>
       </div>
-      <div className={`notice ${sharePointConnected ? "success" : "error"}`}>
+      <div className={`notice ${sharePointConnected || localSyncConnected ? "success" : "error"}`}>
         {sharePointConnected
           ? "SharePoint folder connected"
+          : localSyncConnected
+            ? "Local synced SharePoint folder connected"
           : status?.mode === "mock"
             ? "Using local mock documents"
             : "Unable to access SharePoint folder"}

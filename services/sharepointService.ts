@@ -5,6 +5,7 @@ import type { ApprovedDocument } from "@/types/document";
 import type { DocumentSourceStatus, SharePointConfig, SharePointStatus } from "@/types/sharepoint";
 import {
   getActiveFolderDisplay,
+  hasConfiguredSharePointFolder,
   hasCompleteSharePointCredentials,
   loadSharePointConfig
 } from "./sharepointConfigService";
@@ -43,6 +44,25 @@ interface GraphChildrenResponse {
 export async function checkSharePointAccess(config?: SharePointConfig): Promise<SharePointStatus> {
   const effectiveConfig = config || (await loadSharePointConfig());
 
+  if (effectiveConfig.localFolderPath) {
+    const localStatus = await checkLocalFolderAccess(effectiveConfig.localFolderPath);
+    if (localStatus.available) {
+      return {
+        available: true,
+        message: "Local synced SharePoint folder connected",
+        activeFolder: effectiveConfig.localFolderPath,
+        mode: "local_sync"
+      };
+    }
+
+    return {
+      available: false,
+      message: "Local synced SharePoint folder is not accessible",
+      activeFolder: effectiveConfig.localFolderPath,
+      mode: "unavailable"
+    };
+  }
+
   if (hasCompleteSharePointCredentials(effectiveConfig)) {
     try {
       await listSharePointDocuments(effectiveConfig, { metadataOnly: true });
@@ -74,6 +94,16 @@ export async function checkSharePointAccess(config?: SharePointConfig): Promise<
     }
   }
 
+  if (hasConfiguredSharePointFolder(effectiveConfig)) {
+    return {
+      available: false,
+      message:
+        "SharePoint web link selected, but documents are not readable without app credentials or a local synced folder path",
+      activeFolder: getActiveFolderDisplay(effectiveConfig),
+      mode: "unavailable"
+    };
+  }
+
   if (allowMockDocuments()) {
     const mockStatus = await checkMockDocumentsAccess();
     if (mockStatus.available) {
@@ -92,31 +122,73 @@ export async function checkSharePointAccess(config?: SharePointConfig): Promise<
 export async function getDocumentSourceStatus(
   config?: SharePointConfig
 ): Promise<DocumentSourceStatus> {
+  const effectiveConfig = config || (await loadSharePointConfig());
+  const configuredSharePointFolderUrl = getActiveFolderDisplay(effectiveConfig) || null;
+
+  if (effectiveConfig.localFolderPath) {
+    const localStatus = await checkLocalFolderAccess(effectiveConfig.localFolderPath);
+    if (localStatus.available) {
+      return {
+        activeSource: "LOCAL_SYNC",
+        available: true,
+        displayName: "Local synced SharePoint folder",
+        folderUrl: null,
+        folderPath: effectiveConfig.localFolderPath,
+        configuredSharePointFolderUrl,
+        configuredSharePointFolderPath: effectiveConfig.folderPath,
+        message: "Using local synced SharePoint folder"
+      };
+    }
+
+    return {
+      activeSource: "NONE",
+      available: false,
+      displayName: "Local synced SharePoint folder",
+      folderUrl: null,
+      folderPath: effectiveConfig.localFolderPath,
+      configuredSharePointFolderUrl,
+      configuredSharePointFolderPath: effectiveConfig.folderPath,
+      message: "Local synced SharePoint folder is not accessible"
+    };
+  }
+
+  if (hasConfiguredSharePointFolder(effectiveConfig) && !hasCompleteSharePointCredentials(effectiveConfig)) {
+    return {
+      activeSource: "NONE",
+      available: false,
+      displayName: "SharePoint folder selected",
+      folderUrl: null,
+      folderPath: "",
+      configuredSharePointFolderUrl,
+      configuredSharePointFolderPath: effectiveConfig.folderPath,
+      message:
+        "SharePoint web link selected, but documents are not readable without app credentials or a local synced folder path"
+    };
+  }
+
   const status = await checkSharePointAccess(config);
 
   if (status.mode === "sharepoint") {
-    const effectiveConfig = config || (await loadSharePointConfig());
     return {
       activeSource: "SHAREPOINT",
       available: true,
       displayName: "SharePoint folder",
-      folderUrl: getActiveFolderDisplay(effectiveConfig) || null,
+      folderUrl: configuredSharePointFolderUrl,
       folderPath: effectiveConfig.folderPath,
-      configuredSharePointFolderUrl: getActiveFolderDisplay(effectiveConfig) || null,
+      configuredSharePointFolderUrl,
       configuredSharePointFolderPath: effectiveConfig.folderPath,
       message: "SharePoint folder connected"
     };
   }
 
   if (status.mode === "mock") {
-    const effectiveConfig = config || (await loadSharePointConfig());
     return {
       activeSource: "MOCK",
       available: true,
       displayName: "Local mock documents",
       folderUrl: null,
       folderPath: defaultDocumentsDirectory,
-      configuredSharePointFolderUrl: getActiveFolderDisplay(effectiveConfig) || null,
+      configuredSharePointFolderUrl,
       configuredSharePointFolderPath: effectiveConfig.folderPath,
       message: status.message.includes("SharePoint unavailable")
         ? status.message
@@ -130,14 +202,23 @@ export async function getDocumentSourceStatus(
     displayName: "No document source",
     folderUrl: null,
     folderPath: "",
-    configuredSharePointFolderUrl: null,
-    configuredSharePointFolderPath: "",
-    message: "No document source is currently available."
+    configuredSharePointFolderUrl,
+    configuredSharePointFolderPath: effectiveConfig.folderPath,
+    message: status.message || "No document source is currently available."
   };
 }
 
 export async function listApprovedDocuments(config?: SharePointConfig): Promise<ApprovedDocument[]> {
   const effectiveConfig = config || (await loadSharePointConfig());
+
+  if (effectiveConfig.localFolderPath) {
+    const localStatus = await checkLocalFolderAccess(effectiveConfig.localFolderPath);
+    if (localStatus.available) {
+      return listLocalDocuments(effectiveConfig.localFolderPath);
+    }
+
+    return [];
+  }
 
   if (hasCompleteSharePointCredentials(effectiveConfig)) {
     try {
@@ -151,6 +232,10 @@ export async function listApprovedDocuments(config?: SharePointConfig): Promise<
     }
   }
 
+  if (hasConfiguredSharePointFolder(effectiveConfig)) {
+    return [];
+  }
+
   if (allowMockDocuments()) {
     return listMockDocuments();
   }
@@ -159,38 +244,46 @@ export async function listApprovedDocuments(config?: SharePointConfig): Promise<
 }
 
 async function checkMockDocumentsAccess(): Promise<SharePointStatus> {
+  return checkLocalFolderAccess(defaultDocumentsDirectory);
+}
+
+async function checkLocalFolderAccess(directoryPath: string): Promise<SharePointStatus> {
   try {
-    const stats = await fs.stat(defaultDocumentsDirectory);
+    const stats = await fs.stat(directoryPath);
     if (!stats.isDirectory()) {
-      throw new Error("Mock documents path is not a directory.");
+      throw new Error("Document source path is not a directory.");
     }
 
     return {
       available: true,
-      message: "Local approved mock folder connected",
-      activeFolder: defaultDocumentsDirectory,
+      message: "Local folder connected",
+      activeFolder: directoryPath,
       mode: "mock"
     };
   } catch {
     return {
       available: false,
       message: "SharePoint folder not accessible",
-      activeFolder: defaultDocumentsDirectory,
+      activeFolder: directoryPath,
       mode: "unavailable"
     };
   }
 }
 
 async function listMockDocuments(): Promise<ApprovedDocument[]> {
+  return listLocalDocuments(defaultDocumentsDirectory);
+}
+
+async function listLocalDocuments(directoryPath: string): Promise<ApprovedDocument[]> {
   const documents: ApprovedDocument[] = [];
-  const entries = await fs.readdir(defaultDocumentsDirectory, { withFileTypes: true });
+  const entries = await fs.readdir(directoryPath, { withFileTypes: true });
 
   for (const entry of entries) {
     if (documents.length >= MAX_DOCUMENTS) {
       break;
     }
 
-    const absolutePath = resolveInside(defaultDocumentsDirectory, entry.name);
+    const absolutePath = resolveInside(directoryPath, entry.name);
     const stats = await fs.lstat(absolutePath);
 
     if (stats.isSymbolicLink() || stats.isDirectory() || !stats.isFile()) {

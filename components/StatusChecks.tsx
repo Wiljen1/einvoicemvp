@@ -20,7 +20,7 @@ interface StatusResponse {
       available: boolean;
       message: string;
       activeFolder: string;
-      mode: "sharepoint" | "mock" | "unavailable";
+      mode: "sharepoint" | "local_sync" | "mock" | "unavailable";
     };
     documents: DocumentSourceStatus;
   };
@@ -72,6 +72,8 @@ export function StatusChecks({
   const sourceLabel =
     status?.documents.activeSource === "SHAREPOINT"
       ? "SharePoint"
+      : status?.documents.activeSource === "LOCAL_SYNC"
+        ? "Local synced SharePoint folder"
       : status?.documents.activeSource === "MOCK"
         ? "Mock documents"
         : "None";
