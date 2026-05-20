@@ -29,6 +29,9 @@ const sharePointConfigSchema = z.object({
   updatedAt: z.string().optional()
 });
 
+export const testSharePointFolderUrl =
+  "https://oracle.sharepoint.com/sites/netsuite-suitesuccess-published-assets/SuiteSuccess%20Assets/Forms/AllItems.aspx?FolderCTID=0x012000FBD7834DB23C304CA88C2ABEE32E392F&id=%2Fsites%2Fnetsuite%2Dsuitesuccess%2Dpublished%2Dassets%2FSuiteSuccess%20Assets%2FElectronic%20Invoicing";
+
 export const emptySharePointConfig: SharePointConfig = {
   siteUrl: "",
   folderPath: "",
@@ -99,17 +102,20 @@ export async function buildDraftSharePointConfig(input: unknown): Promise<ShareP
 }
 
 export function toPublicSharePointConfig(config: SharePointConfig): PublicSharePointConfig {
+  const normalized = normalizeSharePointConfig(config);
+
   return {
-    siteUrl: config.siteUrl,
-    folderPath: config.folderPath,
-    tenantId: config.tenantId,
-    clientId: config.clientId,
-    clientSecretConfigured: Boolean(config.clientSecret),
+    siteUrl: normalized.siteUrl,
+    folderPath: normalized.folderPath,
+    folderUrl: normalized.folderUrl || "",
+    tenantId: normalized.tenantId,
+    clientId: normalized.clientId,
+    clientSecretConfigured: Boolean(normalized.clientSecret),
     clientSecretMasked: config.clientSecret ? "********" : "",
-    documentLibraryName: config.documentLibraryName || "",
-    activeFolder: getActiveFolderDisplay(config),
-    lastConnectionStatus: config.lastConnectionStatus || "",
-    lastCheckedAt: config.lastCheckedAt || ""
+    documentLibraryName: normalized.documentLibraryName || "",
+    activeFolder: getActiveFolderDisplay(normalized),
+    lastConnectionStatus: normalized.lastConnectionStatus || "",
+    lastCheckedAt: normalized.lastCheckedAt || ""
   };
 }
 
@@ -124,16 +130,22 @@ export function hasCompleteSharePointCredentials(config: SharePointConfig): bool
 }
 
 export function getActiveFolderDisplay(config: SharePointConfig): string {
-  if (!config.siteUrl && !config.folderPath) {
+  const normalized = normalizeSharePointConfig(config);
+
+  if (normalized.folderUrl) {
+    return normalized.folderUrl;
+  }
+
+  if (!normalized.siteUrl && !normalized.folderPath) {
     return "";
   }
 
-  if (isHttpUrl(config.folderPath)) {
-    return config.folderPath;
+  if (isHttpUrl(normalized.folderPath)) {
+    return normalized.folderPath;
   }
 
-  const siteUrl = config.siteUrl.replace(/\/+$/, "");
-  const folderPath = config.folderPath.replace(/^\/+/, "");
+  const siteUrl = normalized.siteUrl.replace(/\/+$/, "");
+  const folderPath = normalized.folderPath.replace(/^\/+/, "");
 
   return [siteUrl, folderPath].filter(Boolean).join("/");
 }
@@ -154,7 +166,7 @@ async function loadSharePointConfigFromFile(): Promise<SharePointConfig> {
 function sanitizeSharePointConfig(input: unknown): SharePointConfig {
   const parsed = sharePointConfigSchema.parse(input);
 
-  return {
+  return normalizeSharePointConfig({
     siteUrl: parsed.siteUrl,
     folderPath: parsed.folderPath || parsed.folderUrl,
     folderUrl: parsed.folderUrl || "",
@@ -165,7 +177,7 @@ function sanitizeSharePointConfig(input: unknown): SharePointConfig {
     lastConnectionStatus: parsed.lastConnectionStatus,
     lastCheckedAt: parsed.lastCheckedAt,
     updatedAt: parsed.updatedAt
-  };
+  });
 }
 
 function mergeSharePointConfigInput(
@@ -193,6 +205,10 @@ function validateSharePointUrls(config: SharePointConfig): void {
   if (config.folderPath && isProbablyUrl(config.folderPath) && !isHttpUrl(config.folderPath)) {
     throw new Error("SharePoint Folder URL must be a valid http or https URL.");
   }
+
+  if (config.folderUrl && !isHttpUrl(config.folderUrl)) {
+    throw new Error("SharePoint Folder URL must be a valid http or https URL.");
+  }
 }
 
 function isProbablyUrl(value: string): boolean {
@@ -203,6 +219,100 @@ function isHttpUrl(value: string): boolean {
   try {
     const url = new URL(value);
     return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function normalizeSharePointConfig(config: SharePointConfig): SharePointConfig {
+  const folderUrlCandidate = [config.folderUrl, config.folderPath, config.siteUrl].find((value) =>
+    value ? isHttpUrl(value) && isSharePointFolderUrl(value) : false
+  );
+  const parsedFolder = folderUrlCandidate
+    ? parseSharePointFolderUrl(folderUrlCandidate, config)
+    : null;
+
+  return {
+    ...config,
+    siteUrl: parsedFolder?.siteUrl || config.siteUrl,
+    folderPath: parsedFolder?.folderPath || config.folderPath || config.folderUrl || "",
+    folderUrl: parsedFolder?.folderUrl || config.folderUrl || (isHttpUrl(config.folderPath) ? config.folderPath : ""),
+    documentLibraryName:
+      parsedFolder?.documentLibraryName || config.documentLibraryName || "",
+    lastConnectionStatus: config.lastConnectionStatus || "",
+    lastCheckedAt: config.lastCheckedAt || ""
+  };
+}
+
+function parseSharePointFolderUrl(
+  folderUrl: string,
+  config: SharePointConfig
+): Pick<SharePointConfig, "siteUrl" | "folderPath" | "folderUrl" | "documentLibraryName"> | null {
+  try {
+    const url = new URL(folderUrl);
+    const serverRelativeFolder = getServerRelativeFolderPath(url);
+    const sitePath = getSharePointSitePath(serverRelativeFolder || url.pathname);
+
+    if (!sitePath) {
+      return null;
+    }
+
+    const decodedSitePath = decodeURIComponent(sitePath);
+    const decodedFolderPath = decodeURIComponent(serverRelativeFolder || url.pathname);
+    const folderRemainder = decodedFolderPath
+      .replace(decodedSitePath, "")
+      .replace(/^\/+/, "")
+      .replace(/\/Forms\/AllItems\.aspx$/i, "");
+    const pathSegments = folderRemainder.split("/").filter(Boolean);
+    const documentLibraryName = pathSegments[0] || config.documentLibraryName || "";
+    const folderPath = pathSegments.join("/");
+
+    return {
+      siteUrl: `${url.origin}${decodedSitePath}`,
+      folderPath,
+      folderUrl,
+      documentLibraryName
+    };
+  } catch {
+    return null;
+  }
+}
+
+function getServerRelativeFolderPath(url: URL): string {
+  const id = url.searchParams.get("id");
+  if (id) {
+    return id;
+  }
+
+  const rootFolder = url.searchParams.get("RootFolder");
+  if (rootFolder) {
+    return rootFolder;
+  }
+
+  return decodeURIComponent(url.pathname);
+}
+
+function getSharePointSitePath(serverRelativePath: string): string {
+  const decoded = decodeURIComponent(serverRelativePath);
+  const parts = decoded.split("/").filter(Boolean);
+  const prefixIndex = parts.findIndex((part) => part === "sites" || part === "teams");
+
+  if (prefixIndex === -1 || !parts[prefixIndex + 1]) {
+    return "";
+  }
+
+  return `/${parts[prefixIndex]}/${parts[prefixIndex + 1]}`;
+}
+
+function isSharePointFolderUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (
+      url.hostname.includes("sharepoint.com") &&
+      (url.searchParams.has("id") ||
+        url.searchParams.has("RootFolder") ||
+        /\/Forms\/AllItems\.aspx$/i.test(url.pathname))
+    );
   } catch {
     return false;
   }

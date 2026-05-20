@@ -122,6 +122,12 @@ export function StatusChecks({
         <p className="folder-path">
           Folder: {status?.documents.folderUrl || status?.documents.folderPath || "No folder available"}
         </p>
+        {status?.documents.activeSource !== "SHAREPOINT" &&
+        status?.documents.configuredSharePointFolderUrl ? (
+          <p className="folder-path">
+            Configured SharePoint folder: {status.documents.configuredSharePointFolderUrl}
+          </p>
+        ) : null}
         <div className="status-actions">
           <button className="button secondary" type="button" onClick={testSharePointConnection}>
             <PlugZap aria-hidden="true" size={16} />

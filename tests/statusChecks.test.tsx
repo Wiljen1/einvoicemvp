@@ -27,6 +27,8 @@ describe("StatusChecks", () => {
       displayName: "SharePoint folder",
       folderUrl: "https://company.sharepoint.com/sites/einvoice/docs",
       folderPath: "Shared Documents/Approved",
+      configuredSharePointFolderUrl: "https://company.sharepoint.com/sites/einvoice/docs",
+      configuredSharePointFolderPath: "Shared Documents/Approved",
       message: "SharePoint folder connected"
     });
 
@@ -49,6 +51,8 @@ describe("StatusChecks", () => {
       displayName: "Local mock documents",
       folderUrl: null,
       folderPath: "/documents",
+      configuredSharePointFolderUrl: null,
+      configuredSharePointFolderPath: "",
       message: "Using local mock documents"
     });
 
@@ -60,6 +64,30 @@ describe("StatusChecks", () => {
       expect(screen.getByText("Active Source: Mock documents")).toBeInTheDocument();
     });
     expect(screen.getByText("Folder: /documents")).toBeInTheDocument();
+  });
+
+  it("shows configured SharePoint folder when mock is active", async () => {
+    mockStatusFetch({
+      activeSource: "MOCK",
+      available: true,
+      displayName: "Local mock documents",
+      folderUrl: null,
+      folderPath: "/documents",
+      configuredSharePointFolderUrl: "https://company.sharepoint.com/sites/einvoice/docs",
+      configuredSharePointFolderPath: "Shared Documents/Approved",
+      message: "Using local mock documents"
+    });
+
+    render(
+      <StatusChecks processingStatus={idleStatus} refreshKey={0} onRefresh={() => undefined} />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Active Source: Mock documents")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Configured SharePoint folder: https://company.sharepoint.com/sites/einvoice/docs")
+    ).toBeInTheDocument();
   });
 });
 

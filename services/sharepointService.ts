@@ -102,17 +102,22 @@ export async function getDocumentSourceStatus(
       displayName: "SharePoint folder",
       folderUrl: getActiveFolderDisplay(effectiveConfig) || null,
       folderPath: effectiveConfig.folderPath,
+      configuredSharePointFolderUrl: getActiveFolderDisplay(effectiveConfig) || null,
+      configuredSharePointFolderPath: effectiveConfig.folderPath,
       message: "SharePoint folder connected"
     };
   }
 
   if (status.mode === "mock") {
+    const effectiveConfig = config || (await loadSharePointConfig());
     return {
       activeSource: "MOCK",
       available: true,
       displayName: "Local mock documents",
       folderUrl: null,
       folderPath: defaultDocumentsDirectory,
+      configuredSharePointFolderUrl: getActiveFolderDisplay(effectiveConfig) || null,
+      configuredSharePointFolderPath: effectiveConfig.folderPath,
       message: status.message.includes("SharePoint unavailable")
         ? status.message
         : "Using local mock documents"
@@ -125,6 +130,8 @@ export async function getDocumentSourceStatus(
     displayName: "No document source",
     folderUrl: null,
     folderPath: "",
+    configuredSharePointFolderUrl: null,
+    configuredSharePointFolderPath: "",
     message: "No document source is currently available."
   };
 }

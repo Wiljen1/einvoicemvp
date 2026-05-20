@@ -5,6 +5,11 @@ import type { PublicSharePointConfig, SharePointStatus } from "@/types/sharepoin
 import { SharePointConnectionStatus } from "./SharePointConnectionStatus";
 import { SaveSettingsButton, TestConnectionButton } from "./SharePointSettingsButtons";
 
+const testSharePointFolderUrl =
+  "https://oracle.sharepoint.com/sites/netsuite-suitesuccess-published-assets/SuiteSuccess%20Assets/Forms/AllItems.aspx?FolderCTID=0x012000FBD7834DB23C304CA88C2ABEE32E392F&id=%2Fsites%2Fnetsuite%2Dsuitesuccess%2Dpublished%2Dassets%2FSuiteSuccess%20Assets%2FElectronic%20Invoicing";
+const testSharePointSiteUrl =
+  "https://oracle.sharepoint.com/sites/netsuite-suitesuccess-published-assets";
+
 interface SettingsPayload {
   ok: boolean;
   data?: {
@@ -55,7 +60,7 @@ export function SharePointSettingsForm() {
   function setFromPublicConfig(config: PublicSharePointConfig) {
     setForm({
       siteUrl: config.siteUrl,
-      folderPath: config.folderPath,
+      folderPath: config.folderUrl || config.folderPath,
       tenantId: config.tenantId,
       clientId: config.clientId,
       clientSecret: "",
@@ -107,7 +112,7 @@ export function SharePointSettingsForm() {
             <span>SharePoint Site URL</span>
             <input
               className="text-field"
-              placeholder="https://company.sharepoint.com/sites/einvoice"
+              placeholder={testSharePointSiteUrl}
               type="url"
               value={form.siteUrl}
               onChange={(event) => updateField("siteUrl", event.target.value)}
@@ -118,7 +123,7 @@ export function SharePointSettingsForm() {
             <span>SharePoint Folder URL or Folder Path</span>
             <input
               className="text-field"
-              placeholder="Shared Documents/Approved"
+              placeholder={testSharePointFolderUrl}
               value={form.folderPath}
               onChange={(event) => updateField("folderPath", event.target.value)}
             />
@@ -167,6 +172,21 @@ export function SharePointSettingsForm() {
           <div className="settings-actions">
             <TestConnectionButton disabled={action !== "idle"} loading={action === "testing"} />
             <SaveSettingsButton disabled={action !== "idle"} loading={action === "saving"} />
+            <button
+              className="button secondary"
+              disabled={action !== "idle"}
+              type="button"
+              onClick={() =>
+                setForm((current) => ({
+                  ...current,
+                  siteUrl: testSharePointSiteUrl,
+                  folderPath: testSharePointFolderUrl,
+                  documentLibraryName: "SuiteSuccess Assets"
+                }))
+              }
+            >
+              Use Test Link
+            </button>
           </div>
 
           {message ? <div className="field-help">{message}</div> : null}

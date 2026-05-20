@@ -2,7 +2,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultDocumentsDirectory } from "@/lib/paths";
-import { toPublicSharePointConfig } from "@/services/sharepointConfigService";
+import {
+  testSharePointFolderUrl,
+  toPublicSharePointConfig
+} from "@/services/sharepointConfigService";
 import {
   checkSharePointAccess,
   getDocumentSourceStatus,
@@ -73,6 +76,9 @@ describe("sharepointService", () => {
       "https://company.sharepoint.com/sites/einvoice/Shared Documents/Approved"
     );
     expect(status.folderPath).toBe("Shared Documents/Approved");
+    expect(status.configuredSharePointFolderUrl).toBe(
+      "https://company.sharepoint.com/sites/einvoice/Shared Documents/Approved"
+    );
   });
 
   it("reports mock only when mock documents are active", async () => {
@@ -89,6 +95,21 @@ describe("sharepointService", () => {
     expect(status.folderPath).toContain("documents");
   });
 
+  it("keeps the configured SharePoint folder visible when mock is active", async () => {
+    const status = await getDocumentSourceStatus({
+      siteUrl: "https://company.sharepoint.com/sites/einvoice",
+      folderPath: "Shared Documents/Approved",
+      tenantId: "",
+      clientId: "",
+      clientSecret: ""
+    });
+
+    expect(status.activeSource).toBe("MOCK");
+    expect(status.configuredSharePointFolderUrl).toBe(
+      "https://company.sharepoint.com/sites/einvoice/Shared Documents/Approved"
+    );
+  });
+
   it("masks client secrets in public SharePoint config", () => {
     const publicConfig = toPublicSharePointConfig({
       siteUrl: "https://company.sharepoint.com/sites/einvoice",
@@ -101,6 +122,25 @@ describe("sharepointService", () => {
     expect(publicConfig.clientSecretConfigured).toBe(true);
     expect(publicConfig.clientSecretMasked).toBe("********");
     expect(JSON.stringify(publicConfig)).not.toContain("super-secret");
+  });
+
+  it("normalizes copied SharePoint folder links into site, library, and folder path", () => {
+    const publicConfig = toPublicSharePointConfig({
+      siteUrl: testSharePointFolderUrl,
+      folderPath: testSharePointFolderUrl,
+      tenantId: "",
+      clientId: "",
+      clientSecret: "",
+      documentLibraryName: "Electronic Invoicing"
+    });
+
+    expect(publicConfig.siteUrl).toBe(
+      "https://oracle.sharepoint.com/sites/netsuite-suitesuccess-published-assets"
+    );
+    expect(publicConfig.folderUrl).toBe(testSharePointFolderUrl);
+    expect(publicConfig.folderPath).toBe("SuiteSuccess Assets/Electronic Invoicing");
+    expect(publicConfig.documentLibraryName).toBe("SuiteSuccess Assets");
+    expect(publicConfig.activeFolder).toBe(testSharePointFolderUrl);
   });
 
   it("uses SharePoint documents when SharePoint is the active source", async () => {

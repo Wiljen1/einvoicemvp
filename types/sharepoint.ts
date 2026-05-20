@@ -14,6 +14,7 @@ export interface SharePointConfig {
 export interface PublicSharePointConfig {
   siteUrl: string;
   folderPath: string;
+  folderUrl: string;
   tenantId: string;
   clientId: string;
   clientSecretConfigured: boolean;
@@ -40,5 +41,7 @@ export interface DocumentSourceStatus {
   displayName: string;
   folderUrl: string | null;
   folderPath: string;
+  configuredSharePointFolderUrl: string | null;
+  configuredSharePointFolderPath: string;
   message: string;
 }
