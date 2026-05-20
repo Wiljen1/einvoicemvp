@@ -29,4 +29,4 @@ Open `http://localhost:3000`.
 - Access to the approved SharePoint folder
 - Local `.env.local` configuration when automatic detection is not enough
 
-SharePoint secrets stay on each user's machine in `config/sharepoint.config.json`, which is ignored by Git.
+Each user signs in with Microsoft locally. The app uses MSAL delegated access, so no cloud AI API, central server, service account, or SharePoint client secret is required.

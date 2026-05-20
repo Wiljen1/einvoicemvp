@@ -56,14 +56,29 @@ Open `/settings/sharepoint` and enter:
 - SharePoint Folder URL or Folder Path
 - Tenant ID
 - Client ID
-- Client Secret
 - Optional Document Library Name
 
-Secrets are stored only server-side in `config/sharepoint.config.json`, which is ignored by Git. The browser only receives masked secret status.
+The MVP uses Microsoft MSAL delegated sign-in with Authorization Code + PKCE. A client secret is not required for the local SPA flow.
+
+Create a Microsoft Entra app registration with redirect URI:
+
+```text
+http://localhost:3000
+```
+
+Add delegated Microsoft Graph permissions:
+
+- `User.Read`
+- `Files.Read.All`
+- `Sites.Read.All`
+
+The user signs in with Microsoft from the dashboard or SharePoint Settings page. Corporate SSO, MFA, Okta-federated Microsoft login, or Oracle SSO can participate in that Microsoft login flow. Being signed into SharePoint in another browser tab is not enough by itself; the app still needs an MSAL Graph token.
 
 ## Mock Documents
 
-If SharePoint credentials are incomplete and `ALLOW_MOCK_DOCUMENTS=true`, the app uses direct files in the local `documents` folder. Nested folders are ignored.
+If SharePoint credentials are incomplete and `ALLOW_MOCK_DOCUMENTS=true`, the app uses files in the local `documents` folder. Set `LOCAL_DOCUMENTS_PATH=/absolute/path/to/documents` to point at another approved local folder. Recursive scanning is enabled by default with `LOCAL_DOCUMENTS_RECURSIVE=true` and `LOCAL_DOCUMENTS_MAX_DEPTH=10`.
+
+Use **Refresh Documents** on the dashboard after adding files. The app shows the resolved folder path, indexed file count, last indexed time, and skipped files. The MVP reads `.txt`, `.md`, `.json`, `.csv`, and text-based `.pdf` files. Scanned PDFs are skipped without OCR.
 
 ## Chat Behavior
 
@@ -88,5 +103,8 @@ See also:
 
 - `docs/local-sharing.md`
 - `docs/codex-detection.md`
+- `docs/local-documents.md`
+- `docs/msal-setup.md`
 - `docs/sharepoint-setup.md`
 - `docs/troubleshooting.md`
+- `docs/manual-test-checklist.md`

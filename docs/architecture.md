@@ -16,7 +16,7 @@ This is a single Next.js app with server-side API routes and local services.
 1. Validate the question.
 2. Start a local chat session and return a session id.
 3. Check local Codex availability.
-4. Check configured SharePoint access, or approved mock folder access.
+4. Check Microsoft sign-in and configured SharePoint access or approved local document folder access.
 5. Load current guardrails.
 6. Read only approved documents.
 7. Run keyword chunk search.
@@ -36,9 +36,11 @@ The UI polls for progress and can cancel the running local Codex child process.
 
 ## Security Boundary
 
-The chatbot never browses the internet. It only reads direct files from Microsoft Graph for the configured SharePoint folder, or direct files from the local `documents` folder when mock fallback is enabled and SharePoint credentials are incomplete.
+The chatbot never browses the internet. It only reads files from Microsoft Graph for the configured SharePoint folder with a delegated MSAL user token, or files from the resolved local documents folder when local mode is active.
 
-Nested folders are not explored. If the approved folder contains subfolders with other names, those subfolders are ignored.
+Microsoft authentication uses MSAL browser/react with Authorization Code Flow and PKCE. Tokens are requested for delegated Graph permissions and are passed only to local API routes that need to validate or read the configured SharePoint folder. Tokens are not logged, returned in API responses, or saved in local config.
+
+Local folders are scanned recursively by default with max-depth protection. The indexer does not follow symlinks or leave the configured root folder.
 
 Local Codex is run with a read-only sandbox, no approvals, and approved document context only. The app never sends prompts to a paid cloud AI API.
 
