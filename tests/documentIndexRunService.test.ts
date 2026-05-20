@@ -271,7 +271,7 @@ describe("documentIndexRunService", () => {
     expect(results[0].snippet).toContain("OCR extracted e-invoicing qualification text");
   });
 
-  it("indexes PPTX and XLSX content into persistent chunks", async () => {
+  it("indexes PPTX content and keeps XLSX visible but excluded from chat by default", async () => {
     await fs.mkdir(path.join(tempRoot, "Enterprise"), { recursive: true });
     await writePptxFixture(
       path.join(tempRoot, "Enterprise", "E-Invoicing Sales Deck.pptx"),
@@ -289,8 +289,9 @@ describe("documentIndexRunService", () => {
       "Enterprise/E-Invoicing Sales Deck.pptx",
       "Enterprise/Rollout Tracker.xlsx"
     ]);
+    expect(documents.find((document) => document.extension === ".xlsx")?.excludedFromChat).toBe(1);
     expect(chunks.map((chunk) => chunk.text).join(" ")).toContain("VeriFactu rollout milestone");
-    expect(chunks.map((chunk) => chunk.text).join(" ")).toContain("Belgium | Ready for e-invoicing rollout");
+    expect(chunks.map((chunk) => chunk.text).join(" ")).not.toContain("Belgium | Ready for e-invoicing rollout");
   });
 
   it("recursively indexes nested supported business assets", async () => {
@@ -325,6 +326,31 @@ describe("documentIndexRunService", () => {
     expect(documents.find((document) => document.extension === ".mp4")?.indexedMode).toBe(
       "TRANSCRIPT_LINKED"
     );
+  });
+
+  it("excludes noisy spreadsheet and video files from chat by default and allows manual include", async () => {
+    await writeXlsxFixture(path.join(tempRoot, "country-support.xlsx"));
+    await fs.writeFile(path.join(tempRoot, "demo.mp4"), "video metadata mentioning Denmark PEPPOL");
+    await fs.writeFile(path.join(tempRoot, "policy.md"), "Portugal clearance is the approved searchable source.");
+
+    await runIndexToCompletion();
+    const status = await getActiveIndexStatus({ checkForUpdates: false });
+    const documents = listDocumentsBySource(status.source.id);
+    const xlsx = documents.find((document) => document.extension === ".xlsx");
+    const video = documents.find((document) => document.extension === ".mp4");
+
+    expect(xlsx?.excludedFromChat).toBe(1);
+    expect(video?.excludedFromChat).toBe(1);
+    expect(await searchIndexedDocuments("Belgium Denmark PEPPOL")).toEqual([]);
+    expect((await searchIndexedDocuments("Portugal clearance"))[0].relativePath).toBe("policy.md");
+
+    bulkUpdateIndexedDocumentExclusions({
+      documentIds: [xlsx?.id || ""],
+      excludedFromChat: false,
+      exclusionReason: null
+    });
+
+    expect((await searchIndexedDocuments("Belgium rollout"))[0].relativePath).toBe("country-support.xlsx");
   });
 
   it("excludes selected documents from search, sources, and prompt context", async () => {

@@ -97,6 +97,11 @@ a {
   align-items: start;
 }
 
+.dashboard-stack {
+  display: grid;
+  gap: 18px;
+}
+
 .side-stack {
   display: grid;
   gap: 18px;
@@ -865,6 +870,66 @@ a {
   color: var(--muted);
   font-size: 0.78rem;
   text-transform: uppercase;
+}
+
+.table-sort-button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 900;
+  padding: 0;
+  text-align: left;
+  text-transform: inherit;
+}
+
+.pagination-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: rgba(31, 37, 51, 0.28);
+  padding: 20px;
+}
+
+.modal-panel {
+  width: min(920px, 100%);
+  max-height: min(820px, calc(100vh - 40px));
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+
+.question-detail-grid {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+  gap: 8px 14px;
+  margin: 12px 0;
+}
+
+.question-detail-grid span,
+.detail-answer {
+  color: var(--muted);
+}
+
+.detail-answer {
+  white-space: pre-wrap;
 }
 
 .metric-grid {

@@ -7,6 +7,11 @@ import type { ActiveDocumentSourceType, DocumentIndexedMode } from "@/types/docu
 
 type QueryValue = string | number | null;
 
+const DEFAULT_CHAT_EXCLUDED_EXTENSIONS = new Set([".xlsx", ".xls", ".mp4", ".mov"]);
+const DEFAULT_CHAT_EXCLUSION_MIGRATION_ID = "default-chat-exclusions-2026-05-20";
+const DEFAULT_CHAT_EXCLUSION_REASON =
+  "Excluded by default because this file type can add noisy metadata to chat answers.";
+
 export type ExtractionStatus = "PENDING" | "INDEXED" | "PARTIAL" | "FAILED" | "SKIPPED";
 export type ExtractionMode = "TEXT" | "OCR" | "METADATA_ONLY" | "MIXED";
 export type IndexRunStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
@@ -281,6 +286,7 @@ export function upsertIndexedDocument(input: {
   const existing = getDocumentByRelativePath(input.sourceId, input.relativePath);
   const now = new Date().toISOString();
   const id = existing?.id || cryptoRandomId();
+  const shouldExcludeFromChat = shouldDefaultExcludeFromChat(input.extension);
 
   if (existing) {
     db.prepare(
@@ -311,8 +317,8 @@ export function upsertIndexedDocument(input: {
       `INSERT INTO IndexedDocument
         (id, sourceId, fileName, relativePath, absolutePath, extension, sizeBytes, modifiedAt,
          checksum, extractionStatus, extractionMode, indexedMode, indexedAt, error, metadataJson,
-         isMissing, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         isMissing, excludedFromChat, exclusionReason, excludedAt, excludedBy, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       id,
       input.sourceId,
@@ -330,6 +336,10 @@ export function upsertIndexedDocument(input: {
       input.error,
       input.metadataJson,
       input.isMissing || 0,
+      shouldExcludeFromChat ? 1 : 0,
+      shouldExcludeFromChat ? DEFAULT_CHAT_EXCLUSION_REASON : null,
+      shouldExcludeFromChat ? now : null,
+      shouldExcludeFromChat ? "system-default" : null,
       now,
       now
     );
@@ -414,6 +424,51 @@ export function bulkUpdateIndexedDocumentExclusions(input: {
       excludedBy: input.excludedBy
     })
   );
+}
+
+export function bulkUpdateIndexedDocumentChatExclusion(input: {
+  sourceId?: string;
+  documentIds?: string[];
+  excludedFromChat: boolean;
+  exclusionReason?: string | null;
+  excludedBy?: string | null;
+}): number {
+  const now = new Date().toISOString();
+  const excludedAt = input.excludedFromChat ? now : null;
+  const excludedBy = input.excludedFromChat ? input.excludedBy || "local-user" : null;
+  const reason = input.excludedFromChat ? normalizeNullableText(input.exclusionReason) : null;
+  const conditions: string[] = ["isMissing = 0"];
+  const values: QueryValue[] = [
+    input.excludedFromChat ? 1 : 0,
+    reason,
+    excludedAt,
+    excludedBy,
+    now
+  ];
+
+  if (input.sourceId) {
+    conditions.push("sourceId = ?");
+    values.push(input.sourceId);
+  }
+
+  if (input.documentIds?.length) {
+    conditions.push(`id IN (${input.documentIds.map(() => "?").join(", ")})`);
+    values.push(...input.documentIds);
+  }
+
+  const result = getIndexDatabase()
+    .prepare(
+      `UPDATE IndexedDocument SET
+        excludedFromChat = ?,
+        exclusionReason = ?,
+        excludedAt = ?,
+        excludedBy = ?,
+        updatedAt = ?
+       WHERE ${conditions.join(" AND ")}`
+    )
+    .run(...values);
+
+  return Number(result.changes);
 }
 
 export function markDocumentMissing(documentId: string): void {
@@ -799,6 +854,11 @@ export function getIndexCounts(sourceId: string): {
 
 function initializeSchema(db: DatabaseSync): void {
   db.exec(`
+    CREATE TABLE IF NOT EXISTS SchemaMigration (
+      id TEXT PRIMARY KEY,
+      appliedAt TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS DocumentSource (
       id TEXT PRIMARY KEY,
       type TEXT NOT NULL,
@@ -924,6 +984,7 @@ function initializeSchema(db: DatabaseSync): void {
   ensureDocumentSourceIdentityColumns(db);
   ensureIndexedDocumentExclusionColumns(db);
   ensureQuestionAnswerColumns(db);
+  applyDefaultChatExclusionMigration(db);
 }
 
 function ensureDocumentSourceIdentityColumns(db: DatabaseSync): void {
@@ -981,6 +1042,38 @@ function ensureIndexedDocumentExclusionColumns(db: DatabaseSync): void {
       db.exec(`ALTER TABLE IndexedDocument ADD COLUMN ${column.name} ${column.definition};`);
     }
   }
+}
+
+function applyDefaultChatExclusionMigration(db: DatabaseSync): void {
+  const existing = db
+    .prepare("SELECT id FROM SchemaMigration WHERE id = ?")
+    .get(DEFAULT_CHAT_EXCLUSION_MIGRATION_ID);
+
+  if (existing) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE IndexedDocument SET
+      excludedFromChat = 1,
+      exclusionReason = COALESCE(exclusionReason, ?),
+      excludedAt = COALESCE(excludedAt, ?),
+      excludedBy = COALESCE(excludedBy, 'system-default'),
+      updatedAt = ?
+     WHERE lower(extension) IN (${Array.from(DEFAULT_CHAT_EXCLUDED_EXTENSIONS)
+       .map(() => "?")
+       .join(", ")})`
+  ).run(DEFAULT_CHAT_EXCLUSION_REASON, now, now, ...Array.from(DEFAULT_CHAT_EXCLUDED_EXTENSIONS));
+
+  db.prepare("INSERT INTO SchemaMigration (id, appliedAt) VALUES (?, ?)").run(
+    DEFAULT_CHAT_EXCLUSION_MIGRATION_ID,
+    now
+  );
+}
+
+function shouldDefaultExcludeFromChat(extension: string): boolean {
+  return DEFAULT_CHAT_EXCLUDED_EXTENSIONS.has(extension.toLowerCase());
 }
 
 function ensureQuestionAnswerColumns(db: DatabaseSync): void {

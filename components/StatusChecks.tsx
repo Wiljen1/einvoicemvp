@@ -107,12 +107,14 @@ interface StatusChecksProps {
   refreshKey: number;
   processingStatus: ChatSessionStatus;
   onRefresh: () => void;
+  showDetails?: boolean;
 }
 
 export function StatusChecks({
   refreshKey,
   processingStatus,
-  onRefresh
+  onRefresh,
+  showDetails = true
 }: StatusChecksProps) {
   const [status, setStatus] = useState<StatusResponse["data"] | null>(null);
   const [indexStatus, setIndexStatus] = useState<IndexStatus | null>(null);
@@ -275,7 +277,7 @@ export function StatusChecks({
         />
       </div>
 
-      <details className="index-details">
+      {showDetails ? <details className="index-details">
         <summary>Document Index Details</summary>
         <div className="index-detail-grid">
           <span>Active source</span>
@@ -410,7 +412,7 @@ export function StatusChecks({
             </ul>
           </details>
         ) : null}
-      </details>
+      </details> : null}
     </section>
   );
 }

@@ -38,7 +38,8 @@ interface IndexRunProgress {
   error: string | null;
 }
 
-type DocumentFilter = "ALL" | "ACTIVE" | "CHAT_EXCLUDED" | "INDEX_EXCLUDED";
+type DocumentFilter = "ALL" | "ACTIVE" | "CHAT_EXCLUDED" | "INDEX_EXCLUDED" | "FAILED";
+type ExtensionFilter = "ALL" | "PDF" | "PPTX" | "XLSX" | "MP4" | "TEXT" | "IMAGES" | "URL";
 
 interface KnownDocumentSource {
   id: string;
@@ -79,6 +80,8 @@ export function DocumentSourceSettingsForm() {
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
   const [indexRun, setIndexRun] = useState<IndexRunProgress | null>(null);
   const [documentFilter, setDocumentFilter] = useState<DocumentFilter>("ALL");
+  const [extensionFilter, setExtensionFilter] = useState<ExtensionFilter>("ALL");
+  const [documentSearch, setDocumentSearch] = useState("");
   const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
   const [reasonDrafts, setReasonDrafts] = useState<Record<string, string>>({});
   const [bulkReason, setBulkReason] = useState("");
@@ -387,6 +390,43 @@ export function DocumentSourceSettingsForm() {
     }
   }
 
+  async function bulkUpdateFilteredChatExclusion(excludedFromChat: boolean) {
+    const documentIds = filteredIndexedFiles.map((file) => file.id);
+
+    if (documentIds.length === 0) {
+      setMessage("No filtered indexed documents are available to update.");
+      return;
+    }
+
+    setAction("saving");
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/index/documents/bulk-update", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          documentIds,
+          excludedFromChat,
+          exclusionReason: excludedFromChat ? bulkReason || "Bulk document source update" : null
+        })
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.ok) {
+        setMessage(payload.error || "Unable to update filtered documents.");
+        return;
+      }
+
+      await loadSettings();
+      setMessage(`${documentIds.length} filtered document${documentIds.length === 1 ? "" : "s"} updated.`);
+    } finally {
+      setAction("idle");
+    }
+  }
+
   async function selectKnownSource(sourceId: string) {
     setAction("saving");
     setMessage("");
@@ -448,7 +488,14 @@ export function DocumentSourceSettingsForm() {
   const activeIndexRun = indexRun?.status === "QUEUED" || indexRun?.status === "RUNNING";
   const disabled = action !== "idle" || activeIndexRun;
   const startupWarnings = status?.startupValidation.warnings || [];
-  const filteredIndexedFiles = filterIndexedFiles(status?.indexedFiles || [], documentFilter);
+  const filteredIndexedFiles = filterIndexedFiles(
+    status?.indexedFiles || [],
+    documentFilter,
+    extensionFilter,
+    documentSearch
+  );
+  const extensionCounts = getExtensionCounts(status?.indexedFiles || []);
+  const failedFiles = status?.skippedFiles.filter((file) => file.reason && documentFilter === "FAILED") || [];
 
   return (
     <div className="settings-layout">
@@ -552,6 +599,13 @@ export function DocumentSourceSettingsForm() {
         <span className="status-meta">Index-excluded files: {status?.indexExcludedFileCount ?? 0}</span>
         <span className="status-meta">Skipped files: {status?.skippedFileCount ?? 0}</span>
         <span className="status-meta">Failed extractions: {status?.failedFileCount ?? 0}</span>
+        <span className="status-meta">PDF: {extensionCounts.pdf}</span>
+        <span className="status-meta">PPTX: {extensionCounts.pptx}</span>
+        <span className="status-meta">XLSX/XLS: {extensionCounts.xlsx}</span>
+        <span className="status-meta">MP4/MOV: {extensionCounts.video}</span>
+        <span className="status-meta">Text: {extensionCounts.text}</span>
+        <span className="status-meta">Images: {extensionCounts.images}</span>
+        <span className="status-meta">URL files: {extensionCounts.url}</span>
         <span className="status-meta">OCR: {status?.ocrEnabled ? "Enabled" : "Disabled"}</span>
         <span className="status-meta">OCR processed files: {status?.ocrProcessedCount ?? 0}</span>
         <span className="status-meta">
@@ -600,11 +654,38 @@ export function DocumentSourceSettingsForm() {
                   value={documentFilter}
                   onChange={(event) => setDocumentFilter(event.target.value as DocumentFilter)}
                 >
-                  <option value="ALL">All</option>
-                  <option value="ACTIVE">Active</option>
-                  <option value="CHAT_EXCLUDED">Excluded from Chat</option>
-                  <option value="INDEX_EXCLUDED">Excluded from Indexing</option>
+                  <option value="ALL">All files</option>
+                  <option value="ACTIVE">Active for chat</option>
+                  <option value="CHAT_EXCLUDED">Excluded from chat</option>
+                  <option value="INDEX_EXCLUDED">Excluded from indexing</option>
+                  <option value="FAILED">Failed extraction</option>
                 </select>
+              </label>
+              <label className="compact-field">
+                <span>File type</span>
+                <select
+                  className="text-field"
+                  value={extensionFilter}
+                  onChange={(event) => setExtensionFilter(event.target.value as ExtensionFilter)}
+                >
+                  <option value="ALL">All types</option>
+                  <option value="PDF">PDF</option>
+                  <option value="PPTX">PPTX</option>
+                  <option value="XLSX">XLSX / XLS</option>
+                  <option value="MP4">MP4 / MOV</option>
+                  <option value="TEXT">TXT / MD / CSV / JSON</option>
+                  <option value="IMAGES">Images</option>
+                  <option value="URL">URL files</option>
+                </select>
+              </label>
+              <label className="compact-field grow">
+                <span>Search files</span>
+                <input
+                  className="text-field"
+                  placeholder="Filename or folder path"
+                  value={documentSearch}
+                  onChange={(event) => setDocumentSearch(event.target.value)}
+                />
               </label>
               <label className="compact-field grow">
                 <span>Bulk exclusion reason</span>
@@ -615,6 +696,22 @@ export function DocumentSourceSettingsForm() {
                   onChange={(event) => setBulkReason(event.target.value)}
                 />
               </label>
+              <button
+                className="button secondary"
+                disabled={disabled || filteredIndexedFiles.length === 0 || documentFilter === "FAILED"}
+                type="button"
+                onClick={() => bulkUpdateFilteredChatExclusion(true)}
+              >
+                Exclude filtered files from chat
+              </button>
+              <button
+                className="button secondary"
+                disabled={disabled || filteredIndexedFiles.length === 0 || documentFilter === "FAILED"}
+                type="button"
+                onClick={() => bulkUpdateFilteredChatExclusion(false)}
+              >
+                Include filtered files in chat
+              </button>
               <button
                 className="button secondary"
                 disabled={disabled || selectedDocumentIds.length === 0}
@@ -737,6 +834,15 @@ export function DocumentSourceSettingsForm() {
                 </li>
               ))}
             </ul>
+            {documentFilter === "FAILED" ? (
+              <ul>
+                {failedFiles.slice(0, 50).map((file) => (
+                  <li key={file.path}>
+                    {file.relativePath} - {file.reason}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </details>
         ) : null}
 
@@ -818,20 +924,65 @@ function buildReasonDrafts(files: IndexedDocumentFile[]): Record<string, string>
   return Object.fromEntries(files.map((file) => [file.id, file.exclusionReason || ""]));
 }
 
-function filterIndexedFiles(files: IndexedDocumentFile[], filter: DocumentFilter): IndexedDocumentFile[] {
+function filterIndexedFiles(
+  files: IndexedDocumentFile[],
+  filter: DocumentFilter,
+  extensionFilter: ExtensionFilter,
+  search: string
+): IndexedDocumentFile[] {
+  const normalizedSearch = search.trim().toLowerCase();
+
+  if (filter === "FAILED") {
+    return [];
+  }
+
+  const filtered = files.filter((file) => {
+    const matchesSearch =
+      !normalizedSearch ||
+      file.fileName.toLowerCase().includes(normalizedSearch) ||
+      file.relativePath.toLowerCase().includes(normalizedSearch);
+    const matchesExtension = extensionMatches(file.extension, extensionFilter);
+
+    return matchesSearch && matchesExtension;
+  });
+
   if (filter === "ACTIVE") {
-    return files.filter((file) => !file.excludedFromChat && !file.excludedFromIndexing);
+    return filtered.filter((file) => !file.excludedFromChat);
   }
 
   if (filter === "CHAT_EXCLUDED") {
-    return files.filter((file) => file.excludedFromChat);
+    return filtered.filter((file) => file.excludedFromChat);
   }
 
   if (filter === "INDEX_EXCLUDED") {
-    return files.filter((file) => file.excludedFromIndexing);
+    return filtered.filter((file) => file.excludedFromIndexing);
   }
 
-  return files;
+  return filtered;
+}
+
+function extensionMatches(extension: string, filter: ExtensionFilter): boolean {
+  if (filter === "ALL") return true;
+  if (filter === "PDF") return extension === ".pdf";
+  if (filter === "PPTX") return extension === ".pptx";
+  if (filter === "XLSX") return [".xlsx", ".xls"].includes(extension);
+  if (filter === "MP4") return [".mp4", ".mov"].includes(extension);
+  if (filter === "TEXT") return [".txt", ".md", ".markdown", ".csv", ".json"].includes(extension);
+  if (filter === "IMAGES") return [".png", ".jpg", ".jpeg"].includes(extension);
+  if (filter === "URL") return extension === ".url";
+  return true;
+}
+
+function getExtensionCounts(files: IndexedDocumentFile[]) {
+  return {
+    pdf: files.filter((file) => file.extension === ".pdf").length,
+    pptx: files.filter((file) => file.extension === ".pptx").length,
+    xlsx: files.filter((file) => [".xlsx", ".xls"].includes(file.extension)).length,
+    video: files.filter((file) => [".mp4", ".mov"].includes(file.extension)).length,
+    text: files.filter((file) => [".txt", ".md", ".markdown", ".csv", ".json"].includes(file.extension)).length,
+    images: files.filter((file) => [".png", ".jpg", ".jpeg"].includes(file.extension)).length,
+    url: files.filter((file) => file.extension === ".url").length
+  };
 }
 
 function getIndexedModeLabel(mode?: string): string {

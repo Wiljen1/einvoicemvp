@@ -5,6 +5,7 @@ import { Settings, Shield } from "lucide-react";
 import { useState } from "react";
 import type { ChatSessionStatus } from "@/types/chat";
 import { ChatWindow } from "./ChatWindow";
+import { DocumentIndexDetails } from "./DocumentIndexDetails";
 import { GuardrailsSummary } from "./GuardrailsSummary";
 import { StatusChecks } from "./StatusChecks";
 
@@ -49,13 +50,13 @@ export function KnowledgeAssistantDashboard() {
         processingStatus={processingStatus}
         refreshKey={refreshKey}
         onRefresh={refresh}
+        showDetails={false}
       />
 
-      <div className="dashboard-grid">
-        <div className="side-stack">
-          <GuardrailsSummary />
-        </div>
+      <div className="dashboard-stack">
         <ChatWindow onProcessingStatusChange={setProcessingStatus} />
+        <GuardrailsSummary />
+        <DocumentIndexDetails />
       </div>
     </main>
   );

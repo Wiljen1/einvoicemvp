@@ -7,7 +7,6 @@ import {
   persistAssistantAnswer
 } from "./answerReuseService";
 import { buildChatPrompt } from "./chatPromptService";
-import { getCachedChatAnswer, buildChatCacheKey, saveCachedChatAnswer } from "./chatCacheService";
 import { evaluateChatQuestionSafety } from "./chatSafetyService";
 import {
   checkCodexStatus,
@@ -217,46 +216,6 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
     }
 
     updateSession(session, 58, "Preparing prompt");
-    const cacheKey = buildChatCacheKey({
-      question: session.question,
-      guardrails,
-      contextChunks,
-      folderIdentifier: [
-        indexStatus.source.type,
-        indexStatus.source.rootPath,
-        indexStatus.index.lastIndexedAt || "not-indexed"
-      ].join(":")
-    });
-    const cachedAnswer = await getCachedChatAnswer(cacheKey);
-    ensureNotCancelled(session);
-
-    if (cachedAnswer) {
-      const cachedWithMetadata: ChatAnswer = {
-        ...cachedAnswer,
-        answerSource: "CACHE",
-        warning:
-          cachedAnswer.warning || possibleSimilar
-            ? [cachedAnswer.warning, possibleSimilar ? buildPossibleSimilarWarning(possibleSimilar.similarityScore) : ""]
-                .filter(Boolean)
-                .join(" ")
-            : undefined
-      };
-      persistAssistantAnswer({
-        sessionId: session.sessionId,
-        sourceId: indexStatus.source.id,
-        question: session.question,
-        answer: cachedWithMetadata,
-        responseTimeMs: Date.now() - startedAt,
-        codexUsed: false,
-        cacheHit: true,
-        answerSource: "CACHE",
-        indexStatus,
-        retrievedChunks: contextChunks
-      });
-      completeSession(session, cachedWithMetadata, "Loaded from cache");
-      return;
-    }
-
     const prompt = buildChatPrompt({
       question: session.question,
       guardrails,
@@ -301,7 +260,6 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
         .join(" ") || undefined
     };
 
-    await saveCachedChatAnswer(cacheKey, answer);
     persistAssistantAnswer({
       sessionId: session.sessionId,
       sourceId: indexStatus.source.id,

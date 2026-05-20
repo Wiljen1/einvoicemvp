@@ -1,7 +1,7 @@
 import type { SearchResult } from "@/types/document";
 import { getEmbeddingService } from "./embeddingService";
 import { ensureActiveDocumentSource } from "./documentIndexRunService";
-import { listSearchableChunks } from "./indexDatabaseService";
+import { getIndexCounts, listSearchableChunks } from "./indexDatabaseService";
 
 const MAX_QUERY_TERMS = 12;
 const MIN_SCORE = 1;
@@ -17,14 +17,18 @@ export async function searchIndexedDocuments(
 
   const source = await ensureActiveDocumentSource();
   const chunks = listSearchableChunks(source.id);
+  const counts = getIndexCounts(source.id);
   const queryTerms = tokenize(question).slice(0, MAX_QUERY_TERMS);
   const limit = options?.limit || 5;
 
   if (queryTerms.length === 0 || chunks.length === 0) {
+    console.info(
+      `[search] activeDocuments=${counts.activeDocuments} excludedDocuments=${counts.chatExcludedDocuments} retrieved=0`
+    );
     return [];
   }
 
-  return chunks
+  const results = chunks
     .map((chunk) => {
       const metadata = parseMetadata(chunk.metadataJson);
       const haystack = [
@@ -60,6 +64,14 @@ export async function searchIndexedDocuments(
     .filter((result) => result.score >= MIN_SCORE)
     .sort((a, b) => b.score - a.score || b.confidence - a.confidence)
     .slice(0, limit);
+
+  console.info(
+    `[search] activeDocuments=${counts.activeDocuments} excludedDocuments=${counts.chatExcludedDocuments} retrieved=${results.length} top=${results
+      .map((result) => `${result.relativePath || result.fileName}:${result.score}`)
+      .join(", ")}`
+  );
+
+  return results;
 }
 
 export function estimateIndexedOverallConfidence(results: SearchResult[]): number {

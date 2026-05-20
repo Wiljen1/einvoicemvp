@@ -26,7 +26,11 @@ interface QuestionLog {
   answerSource: string;
   createdAt: string;
   sources: Array<{ fileName: string; relativePath?: string; snippet?: string }>;
+  retrievedChunks: Array<{ chunkId?: string; documentId?: string; relativePath?: string }>;
 }
+
+type QuestionSortKey = "createdAt" | "confidenceScore" | "responseTimeMs" | "cacheHit" | "codexUsed";
+type SortDirection = "asc" | "desc";
 
 interface Analytics {
   totalQuestions: number;
@@ -67,6 +71,10 @@ export function AdminDashboard() {
   const [codexFilter, setCodexFilter] = useState("ALL");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [questionPage, setQuestionPage] = useState(1);
+  const [questionSortKey, setQuestionSortKey] = useState<QuestionSortKey>("createdAt");
+  const [questionSortDirection, setQuestionSortDirection] = useState<SortDirection>("desc");
+  const [selectedQuestion, setSelectedQuestion] = useState<QuestionLog | null>(null);
   const [status, setStatus] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -162,7 +170,7 @@ export function AdminDashboard() {
 
   const filteredQuestions = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
-    return questions.filter((question) => {
+    const filtered = questions.filter((question) => {
       const matchesSearch =
         !normalizedSearch ||
         question.question.toLowerCase().includes(normalizedSearch) ||
@@ -187,7 +195,35 @@ export function AdminDashboard() {
         matchesTo
       );
     });
-  }, [cacheFilter, codexFilter, confidenceFilter, fromDate, questions, search, sourceFilter, toDate]);
+
+    return [...filtered].sort((a, b) => compareQuestions(a, b, questionSortKey, questionSortDirection));
+  }, [
+    cacheFilter,
+    codexFilter,
+    confidenceFilter,
+    fromDate,
+    questionSortDirection,
+    questionSortKey,
+    questions,
+    search,
+    sourceFilter,
+    toDate
+  ]);
+
+  function updateQuestionSort(key: QuestionSortKey) {
+    if (questionSortKey === key) {
+      setQuestionSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+
+    setQuestionSortKey(key);
+    setQuestionSortDirection("desc");
+  }
+
+  function updateQuestionFilter(update: () => void) {
+    update();
+    setQuestionPage(1);
+  }
 
   return (
     <main className="page-shell">
@@ -257,13 +293,20 @@ export function AdminDashboard() {
           sourceFilter={sourceFilter}
           toDate={toDate}
           onClear={clearQuestionHistory}
-          onCacheFilterChange={setCacheFilter}
-          onCodexFilterChange={setCodexFilter}
-          onConfidenceFilterChange={setConfidenceFilter}
-          onFromDateChange={setFromDate}
-          onSearchChange={setSearch}
-          onSourceFilterChange={setSourceFilter}
-          onToDateChange={setToDate}
+          onCacheFilterChange={(value) => updateQuestionFilter(() => setCacheFilter(value))}
+          onCodexFilterChange={(value) => updateQuestionFilter(() => setCodexFilter(value))}
+          onConfidenceFilterChange={(value) => updateQuestionFilter(() => setConfidenceFilter(value))}
+          onFromDateChange={(value) => updateQuestionFilter(() => setFromDate(value))}
+          onSearchChange={(value) => updateQuestionFilter(() => setSearch(value))}
+          onSourceFilterChange={(value) => updateQuestionFilter(() => setSourceFilter(value))}
+          onToDateChange={(value) => updateQuestionFilter(() => setToDate(value))}
+          page={questionPage}
+          selectedQuestion={selectedQuestion}
+          sortDirection={questionSortDirection}
+          sortKey={questionSortKey}
+          onPageChange={setQuestionPage}
+          onQuestionSelect={setSelectedQuestion}
+          onSort={updateQuestionSort}
         />
       ) : null}
       {activeSection === "analytics" ? <AnalyticsPanel analytics={analytics} /> : null}
@@ -386,7 +429,14 @@ function QuestionHistory({
   onFromDateChange,
   onSearchChange,
   onSourceFilterChange,
-  onToDateChange
+  onToDateChange,
+  page,
+  selectedQuestion,
+  sortDirection,
+  sortKey,
+  onPageChange,
+  onQuestionSelect,
+  onSort
 }: {
   allQuestions: QuestionLog[];
   questions: QuestionLog[];
@@ -405,10 +455,21 @@ function QuestionHistory({
   onSearchChange: (value: string) => void;
   onSourceFilterChange: (value: string) => void;
   onToDateChange: (value: string) => void;
+  page: number;
+  selectedQuestion: QuestionLog | null;
+  sortDirection: SortDirection;
+  sortKey: QuestionSortKey;
+  onPageChange: (page: number) => void;
+  onQuestionSelect: (question: QuestionLog | null) => void;
+  onSort: (key: QuestionSortKey) => void;
 }) {
   const sourceIds = Array.from(
     new Set(allQuestions.map((question) => question.sourceId).filter(Boolean))
   );
+  const pageSize = 5;
+  const totalPages = Math.max(1, Math.ceil(questions.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pageQuestions = questions.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   return (
     <section className="panel admin-panel">
@@ -490,32 +551,155 @@ function QuestionHistory({
           <thead>
             <tr>
               <th>Question</th>
-              <th>Created</th>
-              <th>Confidence</th>
-              <th>Response</th>
-              <th>Reuse</th>
-              <th>Codex</th>
-              <th>Sources</th>
-              <th>Answer Preview</th>
+              <SortableHeader activeKey={sortKey} direction={sortDirection} label="Created At" sortKey="createdAt" onSort={onSort} />
+              <SortableHeader activeKey={sortKey} direction={sortDirection} label="Confidence" sortKey="confidenceScore" onSort={onSort} />
+              <SortableHeader activeKey={sortKey} direction={sortDirection} label="Response Time" sortKey="responseTimeMs" onSort={onSort} />
+              <SortableHeader activeKey={sortKey} direction={sortDirection} label="Cache Hit" sortKey="cacheHit" onSort={onSort} />
+              <SortableHeader activeKey={sortKey} direction={sortDirection} label="Codex Used" sortKey="codexUsed" onSort={onSort} />
+              <th>Source</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {questions.map((question) => (
-              <tr key={question.id}>
+            {pageQuestions.map((question) => (
+              <tr key={question.id} onClick={() => onQuestionSelect(question)}>
                 <td>{question.question}</td>
                 <td>{question.createdAt}</td>
                 <td>{question.confidenceLevel || "Unknown"}</td>
                 <td>{question.responseTimeMs ? `${question.responseTimeMs} ms` : "n/a"}</td>
                 <td>{question.cacheHit ? "Yes" : "No"}</td>
                 <td>{question.codexUsed ? "Yes" : "No"}</td>
-                <td>{question.sources.length}</td>
-                <td>{question.answer.slice(0, 180)}</td>
+                <td>{question.sourceId || "None"}</td>
+                <td>
+                  <button
+                    className="inline-action"
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onQuestionSelect(question);
+                    }}
+                  >
+                    View
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <div className="pagination-row">
+        <button
+          className="button secondary"
+          disabled={safePage <= 1}
+          type="button"
+          onClick={() => onPageChange(safePage - 1)}
+        >
+          Previous
+        </button>
+        <span>
+          Page {safePage} of {totalPages} - {questions.length} records
+        </span>
+        <button
+          className="button secondary"
+          disabled={safePage >= totalPages}
+          type="button"
+          onClick={() => onPageChange(safePage + 1)}
+        >
+          Next
+        </button>
+      </div>
+
+      {selectedQuestion ? (
+        <QuestionDetailDialog question={selectedQuestion} onClose={() => onQuestionSelect(null)} />
+      ) : null}
     </section>
+  );
+}
+
+function SortableHeader({
+  activeKey,
+  direction,
+  label,
+  sortKey,
+  onSort
+}: {
+  activeKey: QuestionSortKey;
+  direction: SortDirection;
+  label: string;
+  sortKey: QuestionSortKey;
+  onSort: (key: QuestionSortKey) => void;
+}) {
+  return (
+    <th>
+      <button className="table-sort-button" type="button" onClick={() => onSort(sortKey)}>
+        {label}
+        {activeKey === sortKey ? ` ${direction === "asc" ? "↑" : "↓"}` : ""}
+      </button>
+    </th>
+  );
+}
+
+function QuestionDetailDialog({ question, onClose }: { question: QuestionLog; onClose: () => void }) {
+  return (
+    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+      <section
+        aria-modal="true"
+        className="modal-panel"
+        role="dialog"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="panel-header">
+          <div>
+            <h2 className="panel-title">Question Details</h2>
+            <p className="panel-subtitle">{question.createdAt}</p>
+          </div>
+          <button className="button secondary" type="button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+        <div className="question-detail-grid">
+          <span>Confidence</span>
+          <strong>{question.confidenceLevel || "Unknown"} ({question.confidenceScore ?? "n/a"})</strong>
+          <span>Response time</span>
+          <strong>{question.responseTimeMs ? `${question.responseTimeMs} ms` : "n/a"}</strong>
+          <span>Codex used</span>
+          <strong>{question.codexUsed ? "Yes" : "No"}</strong>
+          <span>Answer reused</span>
+          <strong>{question.cacheHit ? "Yes" : "No"}</strong>
+          <span>Answer source</span>
+          <strong>{question.answerSource}</strong>
+          <span>Source</span>
+          <strong>{question.sourceId || "None"}</strong>
+        </div>
+        <h3>Question</h3>
+        <p>{question.question}</p>
+        <h3>Answer</h3>
+        <p className="detail-answer">{question.answer}</p>
+        <h3>Sources</h3>
+        {question.sources.length ? (
+          <ul className="plain-list compact-list">
+            {question.sources.map((source, index) => (
+              <li key={`${source.relativePath || source.fileName}-${index}`}>
+                <strong>{source.relativePath || source.fileName}</strong>
+                {source.snippet ? <p>{source.snippet}</p> : null}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="field-help">No sources were used.</p>
+        )}
+        <h3>Retrieved Chunks</h3>
+        {question.retrievedChunks.length ? (
+          <ul className="plain-list compact-list">
+            {question.retrievedChunks.map((chunk, index) => (
+              <li key={`${chunk.chunkId || index}`}>{chunk.relativePath || chunk.documentId || chunk.chunkId}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="field-help">No retrieved chunks were stored.</p>
+        )}
+      </section>
+    </div>
   );
 }
 
@@ -698,4 +882,45 @@ function toSourceBarItem(item: { source: string; count: number }) {
     label: item.source,
     value: item.count
   };
+}
+
+function compareQuestions(
+  a: QuestionLog,
+  b: QuestionLog,
+  key: QuestionSortKey,
+  direction: SortDirection
+): number {
+  const multiplier = direction === "asc" ? 1 : -1;
+  const left = getSortableQuestionValue(a, key);
+  const right = getSortableQuestionValue(b, key);
+
+  if (left < right) {
+    return -1 * multiplier;
+  }
+
+  if (left > right) {
+    return 1 * multiplier;
+  }
+
+  return 0;
+}
+
+function getSortableQuestionValue(question: QuestionLog, key: QuestionSortKey): number | string {
+  if (key === "createdAt") {
+    return question.createdAt;
+  }
+
+  if (key === "confidenceScore") {
+    return question.confidenceScore ?? -1;
+  }
+
+  if (key === "responseTimeMs") {
+    return question.responseTimeMs ?? -1;
+  }
+
+  if (key === "cacheHit") {
+    return question.cacheHit ? 1 : 0;
+  }
+
+  return question.codexUsed ? 1 : 0;
 }

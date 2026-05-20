@@ -83,8 +83,12 @@ describe("guardrailsService", () => {
       prompt.indexOf("USER ADDITIONAL GUARDRAILS:")
     );
     expect(prompt.indexOf("USER ADDITIONAL GUARDRAILS:")).toBeLessThan(
+      prompt.indexOf("ANSWER QUALITY RULES:")
+    );
+    expect(prompt.indexOf("ANSWER QUALITY RULES:")).toBeLessThan(
       prompt.indexOf("DOCUMENT CONTEXT:")
     );
+    expect(prompt).toContain("separate the actual entity names from product names");
   });
 
   it("does not let conflicting user guardrails replace protected system guardrails", async () => {
