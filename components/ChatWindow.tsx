@@ -1,20 +1,10 @@
 "use client";
 
-import { Bot, Sparkles } from "lucide-react";
+import { Bot } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ChatAnswer, ChatSessionStatus } from "@/types/chat";
 import { ChatInput } from "./ChatInput";
-import { ConfidenceBadge } from "./ConfidenceBadge";
-import { ProcessingProgressBar } from "./ProcessingProgressBar";
-import { SourceList } from "./SourceList";
-
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  question?: string;
-  result?: ChatAnswer;
-}
+import { SlackStyleChat, type SlackChatTurn } from "./SlackStyleChat";
 
 interface ChatWindowProps {
   onProcessingStatusChange?: (status: ChatSessionStatus) => void;
@@ -32,15 +22,9 @@ const idleStatus: ChatSessionStatus = {
 };
 
 export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      content: "Ask a question about the approved document source."
-    }
-  ]);
-  const [error, setError] = useState("");
+  const [turns, setTurns] = useState<SlackChatTurn[]>([]);
   const [loading, setLoading] = useState(false);
+  const [activeTurnId, setActiveTurnId] = useState<string | undefined>();
   const [processingStatus, setProcessingStatus] = useState<ChatSessionStatus>(idleStatus);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idCounter = useRef(0);
@@ -59,13 +43,22 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
 
   async function askQuestion(question: string, options?: { forceFresh?: boolean }) {
     setLoading(true);
-    setError("");
-    const userMessage: Message = {
-      id: `user-${idCounter.current++}`,
-      role: "user",
-      content: question
-    };
-    setMessages((current) => [...current, userMessage]);
+    const turnId = `turn-${idCounter.current++}`;
+    const startedAt = getCurrentTimestamp();
+    const createdAt = new Date(startedAt).toISOString();
+
+    setActiveTurnId(turnId);
+    setTurns((current) => [
+      ...current,
+      {
+        id: turnId,
+        question,
+        createdAt,
+        status: "processing",
+        step: "Queued",
+        progress: 2
+      }
+    ]);
 
     try {
       const response = await fetch("/api/chat/start", {
@@ -79,7 +72,7 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
 
       if (!response.ok || !payload.ok) {
         const message = payload.error || "Unable to answer right now.";
-        setError(message);
+        failTurn(turnId, message);
         setProcessingStatus({
           ...idleStatus,
           status: "FAILED",
@@ -87,15 +80,17 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
           error: message
         });
         setLoading(false);
+        setActiveTurnId(undefined);
         return;
       }
 
       const status = payload.data as ChatSessionStatus;
       setProcessingStatus(status);
-      pollSession(status.sessionId, question);
+      updateTurnFromStatus(turnId, status);
+      pollSession(status.sessionId, turnId, startedAt);
     } catch {
       const message = "Unable to reach the chat service.";
-      setError(message);
+      failTurn(turnId, message);
       setProcessingStatus({
         ...idleStatus,
         status: "FAILED",
@@ -103,10 +98,11 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
         error: message
       });
       setLoading(false);
+      setActiveTurnId(undefined);
     }
   }
 
-  async function pollSession(sessionId: string, originalQuestion: string) {
+  async function pollSession(sessionId: string, turnId: string, startedAt: number) {
     try {
       const response = await fetch(`/api/chat/status/${encodeURIComponent(sessionId)}`, {
         cache: "no-store"
@@ -119,13 +115,15 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
 
       const status = payload.data as ChatSessionStatus;
       setProcessingStatus(status);
+      updateTurnFromStatus(turnId, status);
 
       if (status.status === "RUNNING") {
-        pollTimer.current = setTimeout(() => pollSession(sessionId, originalQuestion), 700);
+        pollTimer.current = setTimeout(() => pollSession(sessionId, turnId, startedAt), 700);
         return;
       }
 
       setLoading(false);
+      setActiveTurnId(undefined);
 
       if (status.status === "COMPLETED" && status.answer !== null && status.confidence !== null) {
         const answer: ChatAnswer = {
@@ -139,22 +137,47 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
           reusedFromQuestionId: status.reusedFromQuestionId,
           warning: status.warning
         };
-        const assistantMessage: Message = {
-          id: `assistant-${idCounter.current++}`,
-          role: "assistant",
-          content: answer.answer,
-          question: originalQuestion,
-          result: answer
-        };
-        setMessages((current) => [...current, assistantMessage]);
+
+        setTurns((current) =>
+          current.map((turn) =>
+            turn.id === turnId
+              ? {
+                  ...turn,
+                  status: "completed",
+                  progress: 100,
+                  step: "Completed",
+                  answer: answer.answer,
+                  result: answer,
+                  responseTimeMs: getCurrentTimestamp() - startedAt
+                }
+              : turn
+          )
+        );
         return;
       }
 
-      setError(status.error || "Unable to answer right now.");
+      if (status.status === "CANCELLED") {
+        setTurns((current) =>
+          current.map((turn) =>
+            turn.id === turnId
+              ? {
+                  ...turn,
+                  status: "cancelled",
+                  step: "Request cancelled",
+                  progress: status.progress || turn.progress,
+                  error: status.error || "Request cancelled"
+                }
+              : turn
+          )
+        );
+        return;
+      }
+
+      failTurn(turnId, status.error || "Unable to answer right now.");
     } catch (pollError) {
       const message =
         pollError instanceof Error ? pollError.message : "Unable to read processing status.";
-      setError(message);
+      failTurn(turnId, message);
       setProcessingStatus((current) => ({
         ...current,
         status: "FAILED",
@@ -162,6 +185,7 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
         error: message
       }));
       setLoading(false);
+      setActiveTurnId(undefined);
     }
   }
 
@@ -182,6 +206,7 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
     );
     const payload = await response.json();
     const status = payload.data as ChatSessionStatus | undefined;
+    const currentTurnId = activeTurnId;
 
     setProcessingStatus(
       status || {
@@ -191,72 +216,81 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
         error: "Request cancelled"
       }
     );
-    setError("Request cancelled");
+
+    if (currentTurnId) {
+      setTurns((current) =>
+        current.map((turn) =>
+          turn.id === currentTurnId
+            ? {
+                ...turn,
+                status: "cancelled",
+                step: "Request cancelled",
+                error: "Request cancelled"
+              }
+            : turn
+        )
+      );
+    }
+
     setLoading(false);
+    setActiveTurnId(undefined);
+  }
+
+  function updateTurnFromStatus(turnId: string, status: ChatSessionStatus) {
+    setTurns((current) =>
+      current.map((turn) =>
+        turn.id === turnId
+          ? {
+              ...turn,
+              step: status.step,
+              progress: status.progress,
+              status: status.status === "RUNNING" ? "processing" : turn.status,
+              error: status.error || turn.error
+            }
+          : turn
+      )
+    );
+  }
+
+  function failTurn(turnId: string, message: string) {
+    setTurns((current) =>
+      current.map((turn) =>
+        turn.id === turnId
+          ? {
+              ...turn,
+              status: "failed",
+              step: "Error",
+              error: message
+            }
+          : turn
+      )
+    );
   }
 
   return (
     <section className="panel chat-panel" aria-label="Chat interface">
-      <div className="panel-header">
+      <div className="panel-header slack-chat-header">
         <div>
           <h2 className="panel-title">
             <Bot aria-hidden="true" size={20} />
-            Chat
+            Knowledge Bot
           </h2>
-          <p className="panel-subtitle">Answers are constrained to the approved folder.</p>
+          <p className="panel-subtitle">Ask a question based on the indexed document source.</p>
         </div>
       </div>
 
-      <ProcessingProgressBar status={processingStatus} onCancel={cancelCurrentSession} />
-
-      <div className="messages" aria-live="polite">
-        {messages.map((message) => (
-          <article className={`message ${message.role}`} key={message.id}>
-            <span className="message-label">{message.role === "user" ? "You" : "Assistant"}</span>
-            <p>{message.content}</p>
-            {message.result ? (
-              <>
-                <div className="answer-meta">
-                  <ConfidenceBadge confidence={message.result.confidence} />
-                  <span className="engine-badge">
-                    <Sparkles aria-hidden="true" size={14} />
-                    {message.result.fromCache
-                      ? message.result.answerSource === "PREVIOUS_SIMILAR_QUESTION"
-                        ? "Previous similar question"
-                        : "Loaded from cache"
-                      : message.result.engine === "codex"
-                        ? "Codex"
-                        : "Codex placeholder"}
-                  </span>
-                </div>
-                {message.result.warning ? (
-                  <div className="notice warning">{message.result.warning}</div>
-                ) : null}
-                {message.result.answerSource === "PREVIOUS_SIMILAR_QUESTION" && message.question ? (
-                  <button
-                    className="button secondary inline-button"
-                    disabled={loading}
-                    type="button"
-                    onClick={() => askQuestion(message.question as string, { forceFresh: true })}
-                  >
-                    Run fresh search
-                  </button>
-                ) : null}
-                <SourceList sources={message.result.sources} />
-              </>
-            ) : null}
-          </article>
-        ))}
-        {loading ? (
-          <article className="message assistant">
-            <span className="message-label">Assistant</span>
-            <p>Checking the approved documents...</p>
-          </article>
-        ) : null}
-        {error ? <div className="notice error">{error}</div> : null}
-      </div>
+      <SlackStyleChat
+        activeTurnId={activeTurnId}
+        turns={turns}
+        onCancel={cancelCurrentSession}
+        onRunFresh={(question) => void askQuestion(question, { forceFresh: true })}
+      />
 
       <ChatInput disabled={loading} onSubmit={askQuestion} />
     </section>
   );
+}
+
+function getCurrentTimestamp(): number {
+  return Date.now();
 }

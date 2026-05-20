@@ -71,6 +71,31 @@ Expected behavior:
 - OCR count does not change during chat
 - unsupported details are refused or qualified
 
+## Chat UI Validation
+
+The main chat should behave like a lightweight Slackbot conversation:
+
+- submitted questions appear as visible `You` messages
+- inline `Knowledge Bot` processing appears while the request is running
+- final answers appear directly below the question
+- source and confidence details are available inside `Show sources and confidence`
+- reused answers show `Reused from a similar previous question`
+- fresh supported answers show `Answered with Codex using indexed documents`
+- out-of-scope questions return a safe refusal without sources
+
+Quick local smoke questions:
+
+1. `What is e-invoicing?`
+2. `What countries are supported for e-invoicing?`
+3. `What is the weather in Madrid?`
+
+For each question, verify:
+
+- no index run starts during chat
+- OCR processed file count does not change
+- the question and answer are saved to question history
+- sources and confidence are visible in the thread details when available
+
 ## Current Local Validation Snapshot
 
 On 2026-05-20, the synced OneDrive SharePoint folder indexed successfully:
