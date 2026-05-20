@@ -1,0 +1,11 @@
+{
+  "answerOnlyFromDocuments": true,
+  "includeSources": true,
+  "includeConfidenceScore": true,
+  "allowInternetBrowsing": false,
+  "keepAnswersShort": true,
+  "doNotSpeculate": true,
+  "sayWhenInformationIsMissing": true,
+  "tone": "business-friendly",
+  "fallbackMessage": "I could not find enough information in the approved SharePoint folder to answer this confidently."
+}
