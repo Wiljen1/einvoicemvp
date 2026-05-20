@@ -8,6 +8,7 @@ import {
 } from "./answerReuseService";
 import { buildChatPrompt } from "./chatPromptService";
 import { getCachedChatAnswer, buildChatCacheKey, saveCachedChatAnswer } from "./chatCacheService";
+import { evaluateChatQuestionSafety } from "./chatSafetyService";
 import {
   checkCodexStatus,
   CodexOperatorCancelledError,
@@ -128,6 +129,30 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
     updateSession(session, 32, "Loading guardrails");
     const guardrails = await loadGuardrails();
     ensureNotCancelled(session);
+
+    const safetyDecision = evaluateChatQuestionSafety(session.question);
+    if (safetyDecision.blocked) {
+      const answer: ChatAnswer = {
+        answer: safetyDecision.answer || fallbackMessage,
+        confidence: 0,
+        sources: [],
+        engine: codex.executionMode === "placeholder" ? "codex-placeholder" : "codex",
+        answerSource: "REFUSAL"
+      };
+      persistAssistantAnswer({
+        sessionId: session.sessionId,
+        sourceId: indexStatus.source.id,
+        question: session.question,
+        answer,
+        responseTimeMs: Date.now() - startedAt,
+        codexUsed: false,
+        cacheHit: false,
+        answerSource: "REFUSAL",
+        indexStatus
+      });
+      completeSession(session, answer);
+      return;
+    }
 
     const reusableAnswer = findReusableAnswer({
       question: session.question,

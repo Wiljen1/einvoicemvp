@@ -12,6 +12,7 @@ build
 *.tsbuildinfo
 config/sharepoint.config.json
 config/document-source.config.json
+artifacts/
 artifacts/cache/*
 artifacts/codex-operators/*
 uploaded-documents/*

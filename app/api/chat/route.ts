@@ -9,6 +9,7 @@ import {
   persistAssistantAnswer
 } from "@/services/answerReuseService";
 import { buildChatPrompt } from "@/services/chatPromptService";
+import { evaluateChatQuestionSafety } from "@/services/chatSafetyService";
 import { detectCodexStatus, executeCodexPrompt } from "@/services/codexService";
 import { getActiveIndexStatus } from "@/services/documentIndexRunService";
 import {
@@ -68,6 +69,33 @@ export async function POST(request: Request) {
   if (indexStatus.index.activeDocuments === 0 || indexStatus.index.activeChunks === 0) {
     const data: ChatAnswer = {
       answer: noReadableDocumentsMessage,
+      confidence: 0,
+      sources: [],
+      engine: codex.executionMode === "placeholder" ? "codex-placeholder" : "codex",
+      answerSource: "REFUSAL"
+    };
+    persistAssistantAnswer({
+      sessionId,
+      sourceId: indexStatus.source.id,
+      question,
+      answer: data,
+      responseTimeMs: Date.now() - startedAt,
+      codexUsed: false,
+      cacheHit: false,
+      answerSource: "REFUSAL",
+      indexStatus
+    });
+
+    return NextResponse.json({
+      ok: true,
+      data
+    });
+  }
+
+  const safetyDecision = evaluateChatQuestionSafety(question);
+  if (safetyDecision.blocked) {
+    const data: ChatAnswer = {
+      answer: safetyDecision.answer || fallbackMessage,
       confidence: 0,
       sources: [],
       engine: codex.executionMode === "placeholder" ? "codex-placeholder" : "codex",

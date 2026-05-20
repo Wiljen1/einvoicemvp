@@ -72,6 +72,34 @@ describe("chat API", () => {
     expect(payload.data.sources).toEqual([]);
   });
 
+  it("refuses external knowledge questions before document retrieval or Codex", async () => {
+    process.env.CODEX_FORCE_UNAVAILABLE = "false";
+    process.env.CODEX_BIN = "node";
+    process.env.CODEX_EXECUTION_MODE = "placeholder";
+    await fs.writeFile(
+      path.join(tempDocumentsPath, "approved.md"),
+      "Approved documents explain implementation prerequisites only."
+    );
+    await runIndexToCompletion();
+    const statusBeforeChat = await getActiveIndexStatus({ checkForUpdates: false });
+
+    const response = await POST(
+      new Request("http://localhost/api/chat", {
+        method: "POST",
+        body: JSON.stringify({ question: "What is the weather in Madrid today?" })
+      })
+    );
+    const payload = await response.json();
+    const documentsAfterChat = listDocumentsBySource(statusBeforeChat.source.id);
+
+    expect(response.status).toBe(200);
+    expect(payload.ok).toBe(true);
+    expect(payload.data.answer).toContain("cannot use general knowledge");
+    expect(payload.data.confidence).toBe(0);
+    expect(payload.data.sources).toEqual([]);
+    expect(documentsAfterChat).toHaveLength(1);
+  });
+
   it("refuses clearly when no readable local documents are found", async () => {
     process.env.CODEX_FORCE_UNAVAILABLE = "false";
     process.env.CODEX_BIN = "node";
