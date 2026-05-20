@@ -14,7 +14,9 @@ describe("chat API", () => {
 
   beforeEach(async () => {
     tempDocumentsPath = await fs.mkdtemp(path.join(os.tmpdir(), "einvoice-chat-docs-"));
-    process.env.SHAREPOINT_DISABLE_LOCAL_CONFIG = "true";
+    process.env = { ...originalEnv };
+    process.env.DOCUMENT_SOURCE_DISABLE_LOCAL_CONFIG = "true";
+    process.env.DOCUMENT_SOURCE_MODE = "LOCAL_FOLDER";
     process.env.LOCAL_DOCUMENTS_PATH = tempDocumentsPath;
     resetDocumentIndexForTests();
   });
@@ -45,7 +47,6 @@ describe("chat API", () => {
     process.env.CODEX_FORCE_UNAVAILABLE = "false";
     process.env.CODEX_BIN = "node";
     process.env.CODEX_EXECUTION_MODE = "placeholder";
-    process.env.ALLOW_MOCK_DOCUMENTS = "true";
     await fs.writeFile(
       path.join(tempDocumentsPath, "approved.md"),
       "Approved e-invoice documents require source references."
@@ -70,7 +71,6 @@ describe("chat API", () => {
     process.env.CODEX_FORCE_UNAVAILABLE = "false";
     process.env.CODEX_BIN = "node";
     process.env.CODEX_EXECUTION_MODE = "placeholder";
-    process.env.ALLOW_MOCK_DOCUMENTS = "true";
 
     const response = await POST(
       new Request("http://localhost/api/chat", {
@@ -82,32 +82,36 @@ describe("chat API", () => {
 
     expect(response.status).toBe(200);
     expect(payload.ok).toBe(true);
-    expect(payload.data.answer).toContain("No readable documents were found");
+    expect(payload.data.answer).toContain("No readable documents are currently indexed");
     expect(payload.data.confidence).toBe(0);
     expect(payload.data.sources).toEqual([]);
   });
 
-  it("requires Microsoft sign-in when a SharePoint folder is configured", async () => {
+  it("uses synced SharePoint folders as local approved document sources", async () => {
     process.env.CODEX_FORCE_UNAVAILABLE = "false";
     process.env.CODEX_BIN = "node";
     process.env.CODEX_EXECUTION_MODE = "placeholder";
-    process.env.ALLOW_MOCK_DOCUMENTS = "true";
-    process.env.SHAREPOINT_SITE_URL = "https://company.sharepoint.com/sites/einvoice";
-    process.env.SHAREPOINT_FOLDER_PATH = "Shared Documents/Approved";
-    process.env.SHAREPOINT_TENANT_ID = "tenant";
-    process.env.SHAREPOINT_CLIENT_ID = "client";
+    process.env.DOCUMENT_SOURCE_MODE = "SYNCED_SHAREPOINT_FOLDER";
+    const syncedPath = path.join(tempDocumentsPath, "OneDrive", "Electronic Invoicing");
+    process.env.SYNCED_SHAREPOINT_FOLDER_PATH = syncedPath;
+    await fs.mkdir(syncedPath, { recursive: true });
+    await fs.writeFile(
+      path.join(syncedPath, "synced-policy.md"),
+      "The synced alpha policy requires operational review."
+    );
 
     const response = await POST(
       new Request("http://localhost/api/chat", {
         method: "POST",
-        body: JSON.stringify({ question: "What is in SharePoint?" })
+        body: JSON.stringify({ question: "What does the synced alpha policy require?" })
       })
     );
     const payload = await response.json();
 
-    expect(response.status).toBe(503);
-    expect(payload.ok).toBe(false);
-    expect(payload.error).toContain("Microsoft sign-in is required");
+    expect(response.status).toBe(200);
+    expect(payload.ok).toBe(true);
+    expect(payload.data.answer).toContain("operational review");
+    expect(payload.data.sources[0].fileName).toBe("synced-policy.md");
   });
 
 
@@ -115,7 +119,6 @@ describe("chat API", () => {
     process.env.CODEX_FORCE_UNAVAILABLE = "false";
     process.env.CODEX_BIN = "node";
     process.env.CODEX_EXECUTION_MODE = "placeholder";
-    process.env.ALLOW_MOCK_DOCUMENTS = "true";
 
     await fs.writeFile(
       path.join(tempDocumentsPath, "new-policy.md"),
@@ -140,7 +143,6 @@ describe("chat API", () => {
     process.env.CODEX_FORCE_UNAVAILABLE = "false";
     process.env.CODEX_BIN = "node";
     process.env.CODEX_EXECUTION_MODE = "placeholder";
-    process.env.ALLOW_MOCK_DOCUMENTS = "true";
     await fs.writeFile(
       path.join(tempDocumentsPath, "approved.md"),
       "Approved e-invoice documents require source references."

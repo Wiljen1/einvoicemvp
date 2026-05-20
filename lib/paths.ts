@@ -22,8 +22,9 @@ export function getLocalDocumentsPath(): string {
 export const projectRoot = getProjectRoot();
 export const configDirectory = path.join(projectRoot, "config");
 export const guardrailsConfigPath = path.join(configDirectory, "guardrails.json");
-export const sharePointConfigPath = path.join(configDirectory, "sharepoint.config.json");
+export const documentSourceConfigPath = path.join(configDirectory, "document-source.config.json");
 export const defaultDocumentsDirectory = path.join(projectRoot, "documents");
+export const uploadedDocumentsDirectory = path.join(projectRoot, "uploaded-documents");
 export const artifactsDirectory = path.join(projectRoot, "artifacts");
 export const codexOperatorsDirectory = path.join(artifactsDirectory, "codex-operators");
 export const cacheDirectory = path.join(artifactsDirectory, "cache");

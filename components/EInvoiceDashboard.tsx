@@ -33,13 +33,13 @@ export function EInvoiceDashboard() {
           <h1>E-Invoice MVP</h1>
           <p>
             Local approved-source chatbot for client e-invoicing documents, with editable
-            guardrails and SharePoint folder controls.
+            guardrails and local document source controls.
           </p>
         </div>
         <div className="header-actions">
-          <Link className="button secondary" href="/settings/sharepoint">
+          <Link className="button secondary" href="/settings/documents">
             <Settings aria-hidden="true" size={16} />
-            SharePoint Settings
+            Document Settings
           </Link>
         </div>
       </header>

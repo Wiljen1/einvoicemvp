@@ -4,18 +4,13 @@ import {
   Activity,
   BookOpen,
   FileSearch,
-  LogIn,
-  LogOut,
-  PlugZap,
   RefreshCw,
   ServerCog,
-  ShieldCheck,
-  UserCheck
+  ShieldCheck
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ChatSessionStatus } from "@/types/chat";
-import type { DocumentSourceStatus } from "@/types/sharepoint";
-import { useMicrosoftAuth } from "./MicrosoftAuthProvider";
+import type { DocumentIndexStatus } from "@/types/document";
 import { ProcessingProgressBar } from "./ProcessingProgressBar";
 
 interface StatusResponse {
@@ -28,13 +23,7 @@ interface StatusResponse {
       binaryPath: string;
       setupInstructions?: string;
     };
-    sharepoint: {
-      available: boolean;
-      message: string;
-      activeFolder: string;
-      mode: "sharepoint" | "mock" | "auth_required" | "access_denied" | "unavailable";
-    };
-    documents: DocumentSourceStatus;
+    documents: DocumentIndexStatus;
   };
 }
 
@@ -51,35 +40,15 @@ export function StatusChecks({
 }: StatusChecksProps) {
   const [status, setStatus] = useState<StatusResponse["data"] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [testing, setTesting] = useState(false);
   const [refreshingDocuments, setRefreshingDocuments] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
-  const microsoftAuth = useMicrosoftAuth();
-  const {
-    configured: microsoftConfigured,
-    initializing: microsoftInitializing,
-    isAuthenticated: microsoftSignedIn,
-    accountName: microsoftAccountName,
-    message: microsoftMessage,
-    getAccessToken,
-    signIn,
-    signOut
-  } = microsoftAuth;
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadStatus() {
       setLoading(true);
-      const headers: HeadersInit = {};
-      if (microsoftConfigured && microsoftSignedIn) {
-        try {
-          headers.Authorization = `Bearer ${await getAccessToken()}`;
-        } catch {
-          // Status will show the Microsoft session issue through the auth card.
-        }
-      }
-      const response = await fetch("/api/status", { cache: "no-store", headers });
+      const response = await fetch("/api/status", { cache: "no-store" });
       const payload = (await response.json()) as StatusResponse;
 
       if (!cancelled) {
@@ -98,42 +67,14 @@ export function StatusChecks({
     return () => {
       cancelled = true;
     };
-  }, [refreshKey, microsoftConfigured, microsoftSignedIn, getAccessToken]);
+  }, [refreshKey]);
 
   const codexAvailable = status?.codex.available;
   const documentsAvailable = status?.documents.available;
-  const sourceLabel =
-    status?.documents.activeSource === "GRAPH_SHAREPOINT"
-      ? "SharePoint"
-      : status?.documents.activeSource === "LOCAL_SYNCED_FOLDER"
-        ? "Local synced documents"
-      : status?.documents.activeSource === "MOCK_FOLDER"
-        ? "Local documents"
-        : "None";
   const indexedFileCount = status?.documents.fileCount ?? 0;
   const skippedFileCount = status?.documents.skippedFileCount ?? 0;
   const indexedFiles = status?.documents.indexedFiles || [];
   const skippedFiles = status?.documents.skippedFiles || [];
-
-  async function testSharePointConnection() {
-    setTesting(true);
-    try {
-      const headers: HeadersInit = {
-        "Content-Type": "application/json"
-      };
-      if (microsoftConfigured) {
-        headers.Authorization = `Bearer ${await getAccessToken({ interactive: true })}`;
-      }
-      await fetch("/api/settings/sharepoint/test", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({})
-      });
-      onRefresh();
-    } finally {
-      setTesting(false);
-    }
-  }
 
   async function refreshDocuments() {
     setRefreshingDocuments(true);
@@ -166,60 +107,23 @@ export function StatusChecks({
 
       <div className="status-card">
         <div className="status-heading">
-          <span>Microsoft Sign-In</span>
-          <UserCheck aria-hidden="true" size={17} />
-        </div>
-        <p className="status-value">
-          <span
-            className={`status-dot ${
-              microsoftInitializing ? "pending" : microsoftSignedIn ? "ok" : ""
-            }`}
-          />{" "}
-          {microsoftInitializing
-            ? "Checking Microsoft sign-in"
-            : microsoftSignedIn
-              ? "Microsoft signed in"
-              : microsoftMessage}
-        </p>
-        {microsoftAccountName ? (
-          <span className="status-meta">{microsoftAccountName}</span>
-        ) : null}
-        <div className="status-actions">
-          {microsoftSignedIn ? (
-            <button className="button secondary" type="button" onClick={signOut}>
-              <LogOut aria-hidden="true" size={16} />
-              Sign Out
-            </button>
-          ) : (
-            <button
-              className="button secondary"
-              disabled={!microsoftConfigured || microsoftInitializing}
-              type="button"
-              onClick={() => {
-                signIn().then(onRefresh).catch(() => undefined);
-              }}
-            >
-              <LogIn aria-hidden="true" size={16} />
-              Sign in with Microsoft
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="status-card">
-        <div className="status-heading">
-          <span>Document Source</span>
+          <span>Active Document Source</span>
           <ShieldCheck aria-hidden="true" size={17} />
         </div>
         <p className="status-value">
           <span className={`status-dot ${loading ? "pending" : documentsAvailable ? "ok" : ""}`} />{" "}
-          {loading ? "Checking folder access" : status?.documents.message || "No document source is currently available."}
+          {loading
+            ? "Checking document source"
+            : status?.documents.message || "No document source is currently available."}
         </p>
-        <span className="status-meta">Active Source: {sourceLabel}</span>
+        <span className="status-meta">
+          Active Source: {status?.documents.displayName || "None"}
+        </span>
         <p className="folder-path">
-          Folder: {status?.documents.folderUrl || status?.documents.folderPath || "No folder available"}
+          Folder: {status?.documents.folderPath || "No folder available"}
         </p>
-        <span className="status-meta">Files Found: {indexedFileCount}</span>
+        <span className="status-meta">Indexed files: {indexedFileCount}</span>
+        <span className="status-meta">Skipped files: {skippedFileCount}</span>
         <span className="status-meta">
           Last Indexed: {status?.documents.lastIndexedAt || "Not indexed yet"}
         </span>
@@ -227,14 +131,30 @@ export function StatusChecks({
           Recursive Scan: {status?.documents.recursive === false ? "Disabled" : "Enabled"}
         </span>
         <span className="status-meta">
-          Supported: {(status?.documents.supportedExtensions || [".txt", ".md", ".json", ".csv", ".pdf"]).join(", ")}
+          Supported:{" "}
+          {(
+            status?.documents.supportedExtensions || [
+              ".txt",
+              ".md",
+              ".json",
+              ".csv",
+              ".pdf",
+              ".pptx",
+              ".xlsx",
+              ".png",
+              ".mp4",
+              ".url"
+            ]
+          ).join(", ")}
         </span>
         {indexedFileCount > 0 ? (
           <details className="document-file-list">
             <summary>Indexed files ({indexedFileCount})</summary>
             <ul>
               {indexedFiles.slice(0, 20).map((file) => (
-                <li key={file.path}>{file.relativePath || file.fileName}</li>
+                <li key={file.path}>
+                  {file.relativePath || file.fileName} - {getIndexedModeLabel(file.indexedMode)}
+                </li>
               ))}
             </ul>
           </details>
@@ -251,23 +171,13 @@ export function StatusChecks({
             </ul>
           </details>
         ) : null}
-        {!loading && documentsAvailable && indexedFileCount === 0 ? (
+        {!loading && indexedFileCount === 0 ? (
           <p className="folder-path">
-            No readable documents found. Add .txt, .md, .json, .csv, or .pdf files to the folder above,
-            then click Refresh Documents.
-          </p>
-        ) : null}
-        {status?.documents.activeSource !== "GRAPH_SHAREPOINT" &&
-        status?.documents.configuredSharePointFolderUrl ? (
-          <p className="folder-path">
-            Configured SharePoint folder: {status.documents.configuredSharePointFolderUrl}
+            No readable documents are currently indexed. Please add documents or refresh the
+            document index.
           </p>
         ) : null}
         <div className="status-actions">
-          <button className="button secondary" type="button" onClick={testSharePointConnection}>
-            <PlugZap aria-hidden="true" size={16} />
-            {testing ? "Testing" : "Test Connection"}
-          </button>
           <button className="button secondary" type="button" onClick={onRefresh}>
             <RefreshCw aria-hidden="true" size={16} />
             Refresh
@@ -287,9 +197,9 @@ export function StatusChecks({
         </div>
         {showSetup ? (
           <p className="folder-path">
-            Put .txt, .md, .json, .csv, or text-based PDF files in the folder shown above. Nested
-            folders are scanned recursively. Office files, scanned PDFs, symlinks, hidden/system
-            folders, and oversized files are skipped with visible reasons.
+            Use a local folder, a OneDrive-synced SharePoint folder, or manual uploads. The app
+            reads .txt, .md, .json, .csv, and text-based PDF files, scans nested folders, and skips
+            unsupported or unreadable files with visible reasons.
           </p>
         ) : null}
       </div>
@@ -303,4 +213,20 @@ export function StatusChecks({
       </div>
     </section>
   );
+}
+
+function getIndexedModeLabel(mode?: string): string {
+  if (mode === "FULL_TEXT") {
+    return "Fully indexed";
+  }
+
+  if (mode === "TRANSCRIPT_LINKED") {
+    return "Transcript linked";
+  }
+
+  if (mode === "PARTIAL_METADATA") {
+    return "Metadata indexed only";
+  }
+
+  return "Indexed";
 }

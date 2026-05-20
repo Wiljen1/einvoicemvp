@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from "react";
 import type { ChatAnswer, ChatSessionStatus } from "@/types/chat";
 import { ChatInput } from "./ChatInput";
 import { ConfidenceBadge } from "./ConfidenceBadge";
-import { useMicrosoftAuth } from "./MicrosoftAuthProvider";
 import { ProcessingProgressBar } from "./ProcessingProgressBar";
 import { SourceList } from "./SourceList";
 
@@ -36,7 +35,7 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
     {
       id: "welcome",
       role: "assistant",
-      content: "Ask a question about the approved SharePoint folder documents."
+      content: "Ask a question about the approved document source."
     }
   ]);
   const [error, setError] = useState("");
@@ -44,7 +43,6 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
   const [processingStatus, setProcessingStatus] = useState<ChatSessionStatus>(idleStatus);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idCounter = useRef(0);
-  const microsoftAuth = useMicrosoftAuth();
 
   useEffect(() => {
     onProcessingStatusChange?.(processingStatus);
@@ -69,31 +67,11 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
     setMessages((current) => [...current, userMessage]);
 
     try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json"
-      };
-
-      if (microsoftAuth.configured && microsoftAuth.isAuthenticated) {
-        try {
-          const accessToken = await microsoftAuth.getAccessToken();
-          headers.Authorization = `Bearer ${accessToken}`;
-        } catch {
-          const message = "Session expired. Please sign in with Microsoft again.";
-          setError(message);
-          setProcessingStatus({
-            ...idleStatus,
-            status: "FAILED",
-            step: "Error",
-            error: message
-          });
-          setLoading(false);
-          return;
-        }
-      }
-
       const response = await fetch("/api/chat/start", {
         method: "POST",
-        headers,
+        headers: {
+          "Content-Type": "application/json"
+        },
         body: JSON.stringify({ question })
       });
       const payload = await response.json();

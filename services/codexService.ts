@@ -358,6 +358,14 @@ function collectProcess(
     child.stderr.on("data", (chunk: Buffer) => {
       stderr += chunk.toString("utf8");
     });
+    child.stdin.on("error", (error: NodeJS.ErrnoException) => {
+      if (error.code === "EPIPE") {
+        return;
+      }
+
+      clearTimeout(timeout);
+      reject(error);
+    });
     child.on("error", (error) => {
       clearTimeout(timeout);
       reject(error);

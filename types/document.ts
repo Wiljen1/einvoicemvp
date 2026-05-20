@@ -5,17 +5,38 @@ export interface ApprovedDocument {
   absolutePath?: string;
   extension?: string;
   content: string;
+  searchableText?: string;
   sourcePath: string;
   webUrl?: string;
-  sourceType?: "LOCAL_FOLDER" | "GRAPH_SHAREPOINT";
+  sourceType?: ActiveDocumentSourceType;
+  indexedMode?: DocumentIndexedMode;
   metadata?: {
     size?: number;
     lastModified?: string;
     pageCount?: number;
+    slideCount?: number;
+    sheetCount?: number;
+    sheetNames?: string[];
+    width?: number;
+    height?: number;
+    transcriptPath?: string;
+    targetUrl?: string;
   };
 }
 
-export type DocumentSourceType = "MOCK_FOLDER" | "LOCAL_SYNCED_FOLDER" | "GRAPH_SHAREPOINT" | "NONE";
+export type ActiveDocumentSourceType =
+  | "LOCAL_FOLDER"
+  | "SYNCED_SHAREPOINT_FOLDER"
+  | "MANUAL_UPLOAD";
+
+export type DocumentSourceType = ActiveDocumentSourceType | "GRAPH_SHAREPOINT" | "NONE";
+
+export interface DocumentSourceConfig {
+  mode: DocumentSourceType;
+  localFolderPath: string;
+  syncedFolderPath: string;
+  updatedAt?: string;
+}
 
 export interface IndexedDocumentFile {
   id: string;
@@ -26,11 +47,19 @@ export interface IndexedDocumentFile {
   path: string;
   size: number;
   lastModified: string;
-  sourceType: "LOCAL_FOLDER";
+  sourceType: ActiveDocumentSourceType;
+  indexedMode: DocumentIndexedMode;
   metadata: {
     size: number;
     lastModified: string;
     pageCount?: number;
+    slideCount?: number;
+    sheetCount?: number;
+    sheetNames?: string[];
+    width?: number;
+    height?: number;
+    transcriptPath?: string;
+    targetUrl?: string;
   };
 }
 
@@ -45,7 +74,9 @@ export interface SkippedDocumentFile {
 
 export interface DocumentIndexStatus {
   activeSource: DocumentSourceType;
+  displayName: string;
   folderPath: string;
+  folderUrl?: string | null;
   exists: boolean;
   available: boolean;
   recursive: boolean;
@@ -87,3 +118,5 @@ export interface SourceReference {
   webUrl?: string;
   pageCount?: number;
 }
+
+export type DocumentIndexedMode = "FULL_TEXT" | "PARTIAL_METADATA" | "TRANSCRIPT_LINKED";

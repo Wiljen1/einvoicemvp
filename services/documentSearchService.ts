@@ -20,7 +20,14 @@ export function searchDocuments(
   const chunks = documents.flatMap(chunkDocument);
   const scored = chunks
     .map((chunk) => {
-      const haystack = `${chunk.relativePath || chunk.fileName} ${chunk.snippet}`.toLowerCase();
+      const haystack = [
+        chunk.relativePath || chunk.fileName,
+        chunk.fileName,
+        chunk.metadata ? JSON.stringify(chunk.metadata) : "",
+        chunk.snippet
+      ]
+        .join(" ")
+        .toLowerCase();
       const score = queryTerms.reduce((total, term) => {
         const exactMatches = countOccurrences(haystack, term);
         const stemMatches =
@@ -56,7 +63,18 @@ export function estimateOverallConfidence(results: SearchResult[]): number {
 }
 
 function chunkDocument(document: ApprovedDocument): SearchResult[] {
-  const normalized = document.content.replace(/\s+/g, " ").trim();
+  const metadataText = document.metadata ? JSON.stringify(document.metadata) : "";
+  const normalized = [
+    document.relativePath || document.fileName,
+    document.fileName,
+    document.extension || "",
+    document.indexedMode || "",
+    metadataText,
+    document.searchableText || document.content
+  ]
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
   const chunks: SearchResult[] = [];
 
   for (let start = 0; start < normalized.length; start += CHUNK_SIZE - CHUNK_OVERLAP) {

@@ -1,8 +1,9 @@
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { defaultDocumentsDirectory, getLocalDocumentsPath, resolveInside } from "@/lib/paths";
+import { defaultDocumentsDirectory, resolveInside, uploadedDocumentsDirectory } from "@/lib/paths";
 import type {
+  ActiveDocumentSourceType,
   ApprovedDocument,
   DocumentIndex,
   DocumentIndexStatus,
@@ -14,10 +15,10 @@ import {
   extractTextFromFile,
   getSupportedExtractorExtensions
 } from "./documentExtractors";
+import { getActiveDocumentSourceConfig } from "./documentSourceConfigService";
 
 const SKIPPED_DIRECTORIES = new Set(["node_modules", ".git", ".next", "dist", "build", "coverage"]);
 const MAX_DOCUMENTS = 100;
-const MAX_DOCUMENT_BYTES = 15_000_000;
 const MAX_CONTENT_CHARS = 500_000;
 const DEFAULT_MAX_DEPTH = 10;
 
@@ -31,6 +32,7 @@ interface LocalIndexOptions {
 
 interface ScanContext {
   rootPath: string;
+  sourceType: ActiveDocumentSourceType;
   recursive: boolean;
   maxDepth: number;
   documents: ApprovedDocument[];
@@ -41,10 +43,6 @@ interface ScanContext {
 
 export function getSupportedLocalDocumentExtensions(): string[] {
   return getSupportedExtractorExtensions();
-}
-
-export function getLocalDocumentSourceType(): DocumentSourceType {
-  return process.env.LOCAL_DOCUMENTS_PATH?.trim() ? "LOCAL_SYNCED_FOLDER" : "MOCK_FOLDER";
 }
 
 export function getLocalDocumentsRecursive(): boolean {
@@ -76,13 +74,15 @@ export async function getLocalApprovedDocuments(
 }
 
 export async function refreshLocalDocumentIndex(): Promise<DocumentIndex> {
-  const folderPath = getLocalDocumentsPath();
-  const activeSource = getLocalDocumentSourceType();
+  const source = await getActiveDocumentSourceConfig();
+  const folderPath = source.folderPath;
+  const activeSource = source.mode;
   const recursive = getLocalDocumentsRecursive();
   const maxDepth = getLocalDocumentsMaxDepth();
   const indexedAt = new Date().toISOString();
   const context: ScanContext = {
     rootPath: folderPath,
+    sourceType: activeSource,
     recursive,
     maxDepth,
     documents: [],
@@ -92,7 +92,7 @@ export async function refreshLocalDocumentIndex(): Promise<DocumentIndex> {
   };
   let exists = false;
 
-  await ensureDefaultDocumentsDirectory(folderPath);
+  await ensureDocumentsDirectory(folderPath, activeSource);
 
   try {
     const stats = await fs.stat(folderPath);
@@ -107,6 +107,7 @@ export async function refreshLocalDocumentIndex(): Promise<DocumentIndex> {
 
   const index = buildIndex({
     activeSource,
+    displayName: source.displayName,
     folderPath,
     exists,
     recursive,
@@ -128,7 +129,7 @@ export function resetDocumentIndexForTests(): void {
 
 async function getLocalDocumentIndex(options?: LocalIndexOptions): Promise<DocumentIndex> {
   const current = globalThis.__eInvoiceDocumentIndex;
-  const folderPath = getLocalDocumentsPath();
+  const { folderPath } = await getActiveDocumentSourceConfig();
 
   if (!options?.force && current?.folderPath === folderPath) {
     return current;
@@ -196,17 +197,6 @@ async function indexFile(
   const stats = await fs.stat(absolutePath);
   const extension = path.extname(fileName).toLowerCase();
 
-  if (stats.size > MAX_DOCUMENT_BYTES) {
-    pushSkipped(
-      context,
-      fileName,
-      absolutePath,
-      relativePath,
-      `File exceeds ${MAX_DOCUMENT_BYTES} byte MVP limit`
-    );
-    return;
-  }
-
   if (context.documents.length >= MAX_DOCUMENTS) {
     pushSkipped(
       context,
@@ -218,7 +208,12 @@ async function indexFile(
     return;
   }
 
-  const extracted = await extractTextFromFile(absolutePath);
+  const extracted = await extractTextFromFile({
+    filePath: absolutePath,
+    fileName,
+    relativePath,
+    size: stats.size
+  });
   if ("skipped" in extracted) {
     pushSkipped(context, fileName, absolutePath, relativePath, extracted.reason);
     return;
@@ -235,7 +230,14 @@ async function indexFile(
   const metadata = {
     size: stats.size,
     lastModified,
-    pageCount: extracted.metadata.pageCount
+    pageCount: extracted.metadata.pageCount,
+    slideCount: extracted.metadata.slideCount,
+    sheetCount: extracted.metadata.sheetCount,
+    sheetNames: extracted.metadata.sheetNames,
+    width: extracted.metadata.width,
+    height: extracted.metadata.height,
+    transcriptPath: extracted.metadata.transcriptPath,
+    targetUrl: extracted.metadata.targetUrl
   };
 
   context.documents.push({
@@ -245,8 +247,10 @@ async function indexFile(
     absolutePath,
     extension,
     content: content.slice(0, MAX_CONTENT_CHARS),
+    searchableText: content.slice(0, MAX_CONTENT_CHARS),
     sourcePath: absolutePath,
-    sourceType: "LOCAL_FOLDER",
+    sourceType: context.sourceType,
+    indexedMode: extracted.indexedMode,
     metadata
   });
   context.indexedFiles.push({
@@ -258,16 +262,21 @@ async function indexFile(
     path: absolutePath,
     size: stats.size,
     lastModified,
-    sourceType: "LOCAL_FOLDER",
+    sourceType: context.sourceType,
+    indexedMode: extracted.indexedMode,
     metadata
   });
 }
 
-async function ensureDefaultDocumentsDirectory(folderPath: string): Promise<void> {
+async function ensureDocumentsDirectory(
+  folderPath: string,
+  activeSource: ActiveDocumentSourceType
+): Promise<void> {
   if (
     process.env.NODE_ENV !== "production" &&
-    !process.env.LOCAL_DOCUMENTS_PATH?.trim() &&
-    folderPath === defaultDocumentsDirectory
+    (folderPath === defaultDocumentsDirectory ||
+      folderPath === uploadedDocumentsDirectory ||
+      activeSource === "MANUAL_UPLOAD")
   ) {
     await fs.mkdir(folderPath, { recursive: true });
   }
@@ -275,6 +284,7 @@ async function ensureDefaultDocumentsDirectory(folderPath: string): Promise<void
 
 function buildIndex(input: {
   activeSource: DocumentSourceType;
+  displayName: string;
   folderPath: string;
   exists: boolean;
   recursive: boolean;
@@ -287,7 +297,9 @@ function buildIndex(input: {
 }): DocumentIndex {
   return {
     activeSource: input.activeSource,
+    displayName: input.displayName,
     folderPath: input.folderPath,
+    folderUrl: null,
     exists: input.exists,
     available: input.exists,
     recursive: input.recursive,
@@ -317,14 +329,14 @@ function toStatus(index: DocumentIndex): DocumentIndexStatus {
 
 function buildIndexMessage(exists: boolean, indexedFiles: number): string {
   if (!exists) {
-    return "Local documents folder was not found.";
+    return "Configured document folder was not found.";
   }
 
   if (indexedFiles > 0) {
-    return "Local documents connected";
+    return "Documents indexed";
   }
 
-  return "No readable documents found. Add .txt, .md, .json, .csv, or .pdf files to the folder above, then click Refresh Documents.";
+  return "No readable documents are currently indexed. Please add documents or refresh the document index.";
 }
 
 function pushSkipped(
@@ -349,7 +361,7 @@ function shouldSkipDirectory(name: string): boolean {
 }
 
 function isHiddenSystemFile(name: string): boolean {
-  return name.startsWith(".");
+  return name.startsWith(".") || name.startsWith("~$");
 }
 
 function toRelativeDisplayPath(rootPath: string, absolutePath: string): string {

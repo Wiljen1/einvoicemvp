@@ -10,8 +10,10 @@ build
 .DS_Store
 *.tsbuildinfo
 config/sharepoint.config.json
+config/document-source.config.json
 artifacts/cache/*
 artifacts/codex-operators/*
+uploaded-documents/*
 
 # Keep approved local test fixtures tracked, but do not commit synced client document drops.
 documents/*

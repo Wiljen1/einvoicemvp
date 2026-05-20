@@ -9,13 +9,13 @@ import {
 } from "./codexService";
 import { estimateOverallConfidence, searchDocuments } from "./documentSearchService";
 import { fallbackMessage, loadGuardrails } from "./guardrailsService";
-import { getDocumentSourceStatus, listApprovedDocuments } from "./sharepointService";
+import { getDocumentSourceStatus, listApprovedDocuments } from "./documentSourceService";
 import type { ChatAnswer, ChatSessionStatus } from "@/types/chat";
 
 const sessions = getSessionStore();
 const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
 const noReadableDocumentsMessage =
-  "No readable documents were found in the configured local documents folder.";
+  "No readable documents are currently indexed. Please add documents or refresh the document index.";
 
 interface InternalChatSession extends ChatSessionStatus {
   question: string;
@@ -28,7 +28,7 @@ declare global {
   var __eInvoiceChatSessions: Map<string, InternalChatSession> | undefined;
 }
 
-export function startChatSession(question: string, accessToken?: string | null): ChatSessionStatus {
+export function startChatSession(question: string): ChatSessionStatus {
   const sessionId = crypto.randomUUID();
   const session: InternalChatSession = {
     sessionId,
@@ -46,7 +46,7 @@ export function startChatSession(question: string, accessToken?: string | null):
   };
 
   sessions.set(sessionId, session);
-  void runChatPipeline(session, accessToken || null);
+  void runChatPipeline(session);
 
   return toPublicStatus(session);
 }
@@ -73,10 +73,7 @@ export function cancelChatSession(sessionId: string): ChatSessionStatus | null {
   return toPublicStatus(session);
 }
 
-async function runChatPipeline(
-  session: InternalChatSession,
-  accessToken: string | null
-): Promise<void> {
+async function runChatPipeline(session: InternalChatSession): Promise<void> {
   try {
     updateSession(session, 8, "Checking Codex");
     const codex = await checkCodexStatus();
@@ -86,8 +83,8 @@ async function runChatPipeline(
       throw new Error(codex.setupInstructions || "Codex is not available.");
     }
 
-    updateSession(session, 20, "Checking SharePoint folder");
-    const documentsStatus = await getDocumentSourceStatus(undefined, { accessToken });
+    updateSession(session, 20, "Checking active document source");
+    const documentsStatus = await getDocumentSourceStatus();
     ensureNotCancelled(session);
 
     if (!documentsStatus.available) {
@@ -99,9 +96,9 @@ async function runChatPipeline(
     ensureNotCancelled(session);
 
     updateSession(session, 45, "Searching documents");
-    let documents = await listApprovedDocuments(undefined, { accessToken });
+    let documents = await listApprovedDocuments();
     if (documents.length === 0) {
-      documents = await listApprovedDocuments(undefined, { accessToken, forceRefresh: true });
+      documents = await listApprovedDocuments({ forceRefresh: true });
     }
     ensureNotCancelled(session);
 

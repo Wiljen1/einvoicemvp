@@ -7,8 +7,7 @@ import {
   searchDocuments
 } from "@/services/documentSearchService";
 import { fallbackMessage, loadGuardrails } from "@/services/guardrailsService";
-import { getBearerToken } from "@/services/microsoftAuthService";
-import { getDocumentSourceStatus, listApprovedDocuments } from "@/services/sharepointService";
+import { getDocumentSourceStatus, listApprovedDocuments } from "@/services/documentSourceService";
 import type { ChatAnswer } from "@/types/chat";
 
 export const runtime = "nodejs";
@@ -17,11 +16,10 @@ const chatRequestSchema = z.object({
   question: z.string().trim().min(1).max(600)
 });
 const noReadableDocumentsMessage =
-  "No readable documents were found in the configured local documents folder.";
+  "No readable documents are currently indexed. Please add documents or refresh the document index.";
 
 export async function POST(request: Request) {
   let question = "";
-  const accessToken = getBearerToken(request);
 
   try {
     const body = chatRequestSchema.parse(await request.json());
@@ -39,7 +37,7 @@ export async function POST(request: Request) {
   const [guardrails, codex, documentsStatus] = await Promise.all([
     loadGuardrails(),
     detectCodexStatus(),
-    getDocumentSourceStatus(undefined, { accessToken })
+    getDocumentSourceStatus()
   ]);
 
   if (!codex.available) {
@@ -62,9 +60,9 @@ export async function POST(request: Request) {
     );
   }
 
-  let documents = await listApprovedDocuments(undefined, { accessToken });
+  let documents = await listApprovedDocuments();
   if (documents.length === 0) {
-    documents = await listApprovedDocuments(undefined, { accessToken, forceRefresh: true });
+    documents = await listApprovedDocuments({ forceRefresh: true });
   }
 
   if (documents.length === 0) {

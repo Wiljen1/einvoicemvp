@@ -20,22 +20,24 @@ describe("StatusChecks", () => {
     vi.unstubAllGlobals();
   });
 
-  it("shows the SharePoint folder when SharePoint is the active source", async () => {
+  it("shows the synced SharePoint folder path when it is the active local source", async () => {
     mockStatusFetch({
-      activeSource: "GRAPH_SHAREPOINT",
+      activeSource: "SYNCED_SHAREPOINT_FOLDER",
       available: true,
-      displayName: "SharePoint folder",
-      folderUrl: "https://company.sharepoint.com/sites/einvoice/docs",
-      folderPath: "Shared Documents/Approved",
-      configuredSharePointFolderUrl: "https://company.sharepoint.com/sites/einvoice/docs",
-      configuredSharePointFolderPath: "Shared Documents/Approved",
+      displayName: "Synced SharePoint Folder",
+      folderUrl: null,
+      folderPath: "/Users/person/OneDrive/Electronic Invoicing",
       fileCount: 0,
       skippedFileCount: 0,
+      indexedCount: 0,
+      skippedCount: 0,
       recursive: true,
       maxDepth: 10,
       supportedExtensions: [".txt", ".md", ".json", ".csv", ".pdf"],
+      indexedFiles: [],
+      skippedFiles: [],
       lastIndexedAt: "",
-      message: "SharePoint folder connected"
+      message: "Documents indexed"
     });
 
     render(
@@ -43,34 +45,34 @@ describe("StatusChecks", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Active Source: SharePoint")).toBeInTheDocument();
+      expect(screen.getByText("Active Source: Synced SharePoint Folder")).toBeInTheDocument();
     });
     expect(
-      screen.getByText("Folder: https://company.sharepoint.com/sites/einvoice/docs")
+      screen.getByText("Folder: /Users/person/OneDrive/Electronic Invoicing")
     ).toBeInTheDocument();
   });
 
-  it("shows the mock folder only when mock documents are active", async () => {
+  it("shows local folder details only when local documents are active", async () => {
     mockStatusFetch({
-      activeSource: "MOCK_FOLDER",
+      activeSource: "LOCAL_FOLDER",
       available: true,
-      displayName: "Local documents",
+      displayName: "Local Folder",
       folderUrl: null,
       folderPath: "/documents",
-      configuredSharePointFolderUrl: null,
-      configuredSharePointFolderPath: "",
       fileCount: 2,
       skippedFileCount: 1,
+      indexedCount: 2,
+      skippedCount: 1,
       recursive: true,
       maxDepth: 10,
       supportedExtensions: [".txt", ".md", ".json", ".csv", ".pdf"],
       lastIndexedAt: "2026-05-20T10:00:00.000Z",
       indexedFiles: [
-        { fileName: "approved.md", relativePath: "Policies/approved.md", path: "/documents/Policies/approved.md", size: 10, lastModified: "2026-05-20T09:00:00.000Z" },
-        { fileName: "data.csv", relativePath: "data.csv", path: "/documents/data.csv", size: 8, lastModified: "2026-05-20T09:00:00.000Z" }
+        { id: "1", fileName: "approved.md", relativePath: "Policies/approved.md", absolutePath: "/documents/Policies/approved.md", extension: ".md", path: "/documents/Policies/approved.md", size: 10, lastModified: "2026-05-20T09:00:00.000Z", sourceType: "LOCAL_FOLDER", metadata: { size: 10, lastModified: "2026-05-20T09:00:00.000Z" } },
+        { id: "2", fileName: "data.csv", relativePath: "data.csv", absolutePath: "/documents/data.csv", extension: ".csv", path: "/documents/data.csv", size: 8, lastModified: "2026-05-20T09:00:00.000Z", sourceType: "LOCAL_FOLDER", metadata: { size: 8, lastModified: "2026-05-20T09:00:00.000Z" } }
       ],
-      skippedFiles: [{ fileName: "deck.pptx", relativePath: "Slides/deck.pptx", path: "/documents/Slides/deck.pptx", reason: "Unsupported file type (.pptx)" }],
-      message: "Local documents connected"
+      skippedFiles: [{ fileName: "archive.docx", relativePath: "Docs/archive.docx", absolutePath: "/documents/Docs/archive.docx", extension: ".docx", path: "/documents/Docs/archive.docx", reason: "Unsupported file type (.docx)" }],
+      message: "Documents indexed"
     });
 
     render(
@@ -78,36 +80,37 @@ describe("StatusChecks", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Active Source: Local documents")).toBeInTheDocument();
+      expect(screen.getByText("Active Source: Local Folder")).toBeInTheDocument();
     });
     expect(screen.getByText("Folder: /documents")).toBeInTheDocument();
-    expect(screen.getByText("Files Found: 2")).toBeInTheDocument();
+    expect(screen.getByText("Indexed files: 2")).toBeInTheDocument();
     expect(screen.getByText("Recursive Scan: Enabled")).toBeInTheDocument();
     expect(screen.getByText(/Supported: .*\.pdf/)).toBeInTheDocument();
     expect(screen.getByText("Indexed files (2)")).toBeInTheDocument();
     expect(screen.getByText("Skipped files (1)")).toBeInTheDocument();
-    expect(screen.getByText(/Slides\/deck.pptx - Unsupported file type/)).toBeInTheDocument();
+    expect(screen.getByText(/Docs\/archive.docx - Unsupported file type/)).toBeInTheDocument();
   });
 
-  it("shows configured SharePoint folder when mock is active", async () => {
+  it("shows manual upload as an active source without SharePoint status", async () => {
     mockStatusFetch({
-      activeSource: "MOCK_FOLDER",
+      activeSource: "MANUAL_UPLOAD",
       available: true,
-      displayName: "Local documents",
+      displayName: "Manual Upload",
       folderUrl: null,
-      folderPath: "/documents",
-      configuredSharePointFolderUrl: "https://company.sharepoint.com/sites/einvoice/docs",
-      configuredSharePointFolderPath: "Shared Documents/Approved",
+      folderPath: "/uploaded-documents",
       fileCount: 1,
       skippedFileCount: 0,
+      indexedCount: 1,
+      skippedCount: 0,
       recursive: true,
       maxDepth: 10,
       supportedExtensions: [".txt", ".md", ".json", ".csv", ".pdf"],
       lastIndexedAt: "2026-05-20T10:00:00.000Z",
       indexedFiles: [
-        { fileName: "approved.md", relativePath: "approved.md", path: "/documents/approved.md", size: 10, lastModified: "2026-05-20T09:00:00.000Z" }
+        { id: "1", fileName: "approved.md", relativePath: "approved.md", absolutePath: "/uploaded-documents/approved.md", extension: ".md", path: "/uploaded-documents/approved.md", size: 10, lastModified: "2026-05-20T09:00:00.000Z", sourceType: "MANUAL_UPLOAD", metadata: { size: 10, lastModified: "2026-05-20T09:00:00.000Z" } }
       ],
-      message: "Local documents connected"
+      skippedFiles: [],
+      message: "Documents indexed"
     });
 
     render(
@@ -115,11 +118,10 @@ describe("StatusChecks", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Active Source: Local documents")).toBeInTheDocument();
+      expect(screen.getByText("Active Source: Manual Upload")).toBeInTheDocument();
     });
-    expect(
-      screen.getByText("Configured SharePoint folder: https://company.sharepoint.com/sites/einvoice/docs")
-    ).toBeInTheDocument();
+    expect(screen.getByText("Folder: /uploaded-documents")).toBeInTheDocument();
+    expect(screen.queryByText(/Microsoft signed in|SharePoint folder connected/)).not.toBeInTheDocument();
   });
 });
 
@@ -136,12 +138,6 @@ function mockStatusFetch(documents: unknown) {
             message: "Codex detected and operational",
             executionMode: "operator",
             binaryPath: "codex"
-          },
-          sharepoint: {
-            available: true,
-            message: "SharePoint folder connected",
-            activeFolder: "",
-            mode: "sharepoint"
           },
           documents
         }
