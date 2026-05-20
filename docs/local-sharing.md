@@ -21,12 +21,13 @@ Open `http://localhost:3000`.
 - Paid cloud AI APIs
 - Centralized production server
 - Complex Docker setup
+- Entra app registration for the current local MVP
 
 ## What Each User Needs
 
 - Node.js and npm
 - Local Codex app or CLI
-- Access to the approved SharePoint folder
+- Approved local documents, a OneDrive-synced SharePoint folder, or demo uploads
 - Local `.env.local` configuration when automatic detection is not enough
 
-Each user signs in with Microsoft locally. The app uses MSAL delegated access, so no cloud AI API, central server, service account, or SharePoint client secret is required.
+For SharePoint content, sync the approved folder locally with OneDrive and select that path under `/settings/documents`.

@@ -1,45 +1,27 @@
-# SharePoint Setup
+# Synced SharePoint Folder Setup
 
-Open `/settings/sharepoint` in the app.
+The current MVP does not connect directly to SharePoint. Use OneDrive to sync the approved SharePoint folder to your machine, then point the app at that local synced folder.
 
-Enter:
+## Steps
 
-- SharePoint Site URL
-- SharePoint Folder URL or Folder Path
-- Tenant ID
-- Client ID
-- Optional Document Library Name
+1. Open the approved SharePoint folder in Microsoft 365.
+2. Use OneDrive **Sync** for that folder.
+3. Wait until the files are available locally.
+4. Open `http://localhost:3000/settings/documents`.
+5. Select **Synced SharePoint Folder**.
+6. Enter the local OneDrive path, for example:
 
-The MVP uses Microsoft MSAL delegated sign-in. Do not enter or create a client secret for the local SPA flow.
+```text
+/Users/name/OneDrive - Company/Electronic Invoicing
+```
 
-Use **Save Configuration** first so the app can initialize MSAL with the Tenant ID and Client ID. Then use **Sign in with Microsoft** and **Test Connection**.
+7. Save settings.
+8. Click **Refresh / Reindex**.
 
-## How Access Works
+The chatbot reads only the configured local synced folder. It does not browse SharePoint, reuse browser sessions, scrape pages, or read unrelated OneDrive folders.
 
-Being logged into SharePoint in the browser does not automatically give this app access to files. The app must receive a delegated Microsoft Graph token through MSAL.
+## Why This Mode Exists
 
-Flow:
+Direct SharePoint API access requires Microsoft Graph permissions and an admin-approved Entra app registration. The local synced folder mode works with the user's existing SharePoint access without asking the MVP to handle Microsoft tokens.
 
-1. User clicks **Sign in with Microsoft**.
-2. Microsoft opens the corporate login flow.
-3. Existing SSO may complete the sign-in silently or nearly silently.
-4. MFA runs if the tenant requires it.
-5. MSAL receives a delegated Graph token.
-6. The local API uses that token to read only the configured SharePoint folder.
-7. Local Codex receives only retrieved document context.
-
-## Graph Permissions
-
-Start with delegated permissions:
-
-- `User.Read`
-- `Files.Read.All`
-- `Sites.Read.All`
-
-TODO: evaluate least-privilege options such as delegated `Sites.Selected` once the target tenant model is confirmed.
-
-## Document Rules
-
-The app reads only the configured SharePoint folder. It does not scrape SharePoint HTML, browser cookies, service-account sessions, or unrelated folders.
-
-The current Graph path supports readable `.txt`, `.md`, `.markdown`, `.csv`, `.json`, and text-based `.pdf` files. Scanned PDFs, DOCX, PPTX, XLSX, incremental indexing, and checksum/version caching are TODOs behind the document service boundary.
+See `docs/future-sharepoint-integration.md` for the future enterprise integration path.

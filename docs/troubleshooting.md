@@ -18,34 +18,37 @@ CODEX_BIN=C:\Users\you\AppData\Local\Programs\Codex\codex.exe
 
 Restart `npm run dev` after changing `.env.local`.
 
-## SharePoint Not Connected
+## SharePoint Direct Access Is Not Available
 
-Open `/settings/sharepoint`, check the configured folder, and use **Test Connection**.
+The current MVP does not use Microsoft sign-in or Graph. Browser SharePoint login alone does not give this local app file access, and the app must not reuse browser cookies or scrape SharePoint pages.
 
-If the app says Microsoft sign-in is required, click **Sign in with Microsoft**. A normal SharePoint browser session is not enough; the app needs its own delegated Graph token through MSAL.
+Use OneDrive to sync the approved SharePoint folder locally, then choose **Synced SharePoint Folder** under `/settings/documents`.
 
-If access is denied, confirm:
-
-- the user can access the configured folder in SharePoint
-- the Entra app has delegated `User.Read`, `Files.Read.All`, and `Sites.Read.All`
-- tenant admin consent has been granted if required
-- the redirect URI is `http://localhost:3000`
-
-For local document development, leave SharePoint Tenant ID or Client ID incomplete and keep:
-
-```bash
-ALLOW_MOCK_DOCUMENTS=true
-```
-
-The app will use direct files in the local `documents` folder.
+Future direct SharePoint access is documented in `docs/future-sharepoint-integration.md`.
 
 ## Local Documents Not Showing
 
-Check the **Document Source** card on the dashboard. It shows the resolved folder path, indexed file count, skipped file count, and last indexed time.
+Check the **Active Document Source** card on the dashboard. It shows the resolved folder path, indexed file count, skipped file count, supported file types, and last indexed time.
 
-Supported local MVP file types are `.txt`, `.md`, `.json`, `.csv`, and text-based `.pdf`. Scanned PDFs, Office files, symbolic links, hidden/system folders, and oversized files are skipped with a visible reason. Add readable files directly to the shown folder or nested subfolders, then click **Refresh Documents**.
+Supported MVP file types are `.txt`, `.md`, `.markdown`, `.json`, `.csv`, `.pdf`, `.pptx`, `.xlsx`, `.png`, `.mp4`, and `.url`.
+
+Files may appear as:
+
+- **Fully indexed** when useful text was extracted.
+- **Transcript linked** when a video has a nearby `.txt` or `.vtt` transcript.
+- **Metadata indexed only** when the app indexes filename, folder, and basic metadata.
+- **Skipped** when a file is hidden/system, unreadable, corrupted, or outside the configured folder.
 
 Set `LOCAL_DOCUMENTS_PATH=/absolute/path/to/documents` in `.env.local` to use a different approved local folder.
+
+## Large Files
+
+Large supported files are not skipped outright. If they exceed the configured full-text limit, the app indexes metadata only.
+
+```bash
+MAX_TEXT_EXTRACTION_FILE_SIZE_MB=100
+MAX_VIDEO_METADATA_FILE_SIZE_MB=500
+```
 
 ## Stop A Running Codex Job
 

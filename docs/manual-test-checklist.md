@@ -25,20 +25,19 @@ Use this checklist before sharing the MVP with colleagues.
 - Add `.txt`, `.md`, `.json`, or `.csv` files and click **Refresh Documents**.
 - Add a text-based PDF and confirm it appears under indexed files.
 - Add a scanned/image-only PDF and confirm it is skipped with a clear reason.
+- Add `.pptx` and `.xlsx` files and confirm they appear as fully indexed when text is extractable.
+- Add `.png`, `.mp4`, and `.url` files and confirm they appear as metadata indexed only.
+- Add `video.mp4` plus `video.txt` or `video.vtt` and confirm the video appears as transcript linked.
 - Add files inside nested subfolders and confirm relative paths appear in indexed files and chat sources.
-- Add unsupported files such as `.pptx`, `.xlsx`, or `.mp4` and confirm skipped reasons are visible.
 
-## Microsoft Sign-In And SharePoint
+## Synced SharePoint Folder
 
-- Configure Tenant ID, Client ID, SharePoint Site URL, and approved Folder URL.
-- Confirm no client secret is required.
-- Click **Sign in with Microsoft**.
-- Complete SSO/MFA if required.
-- Confirm **Microsoft signed in** appears.
-- Click **Test Connection**.
-- Confirm **SharePoint folder connected** appears when the signed-in user has access.
-- Confirm access-denied and sign-in-required states are clear when permissions or session are missing.
-- Confirm the dashboard shows **Active Source: SharePoint** and does not show the local mock folder as active.
+- Sync the approved SharePoint folder with OneDrive.
+- Open `/settings/documents`.
+- Select **Synced SharePoint Folder**.
+- Enter the local synced folder path.
+- Save and refresh the index.
+- Confirm the dashboard shows **Active Source: Synced SharePoint Folder**.
 
 ## Guardrails
 

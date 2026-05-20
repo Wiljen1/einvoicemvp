@@ -12,29 +12,29 @@ npm run dev
 
 Open `http://localhost:3000`.
 
-Leave SharePoint values empty for mock-folder development, or configure them in the website at `/settings/sharepoint`.
+Use `/settings/documents` to choose the active document source:
 
-For SharePoint access, create a Microsoft Entra SPA app registration with redirect URI `http://localhost:3000`, then save the Tenant ID, Client ID, Site URL, and Folder URL in the app. No client secret is required for the MSAL delegated flow.
+- `LOCAL_FOLDER`
+- `SYNCED_SHAREPOINT_FOLDER`
+- `MANUAL_UPLOAD`
 
 Set `CODEX_BIN` in `.env.local` if Codex is installed somewhere the app cannot detect automatically.
 
-## Production
+## Document Environment Values
 
-The MVP does not require a production server. If a production-style local build is needed, use `.env.production` for:
+```bash
+DOCUMENT_SOURCE_MODE=LOCAL_FOLDER
+LOCAL_DOCUMENTS_PATH=./documents
+SYNCED_SHAREPOINT_FOLDER_PATH=
+LOCAL_DOCUMENTS_RECURSIVE=true
+LOCAL_DOCUMENTS_MAX_DEPTH=10
+MAX_TEXT_EXTRACTION_FILE_SIZE_MB=100
+MAX_VIDEO_METADATA_FILE_SIZE_MB=500
+ENABLE_MSAL_SHAREPOINT=false
+```
 
-- `SHAREPOINT_SITE_URL`
-- `SHAREPOINT_FOLDER_PATH`
-- `LOCAL_DOCUMENTS_PATH`
-- `LOCAL_DOCUMENTS_RECURSIVE`
-- `LOCAL_DOCUMENTS_MAX_DEPTH`
-- `SHAREPOINT_CLIENT_ID`
-- `SHAREPOINT_TENANT_ID`
-- `SHAREPOINT_DOCUMENT_LIBRARY_NAME`
-- `NEXT_PUBLIC_MSAL_CLIENT_ID`
-- `NEXT_PUBLIC_MSAL_TENANT_ID`
-- `NEXT_PUBLIC_MSAL_REDIRECT_URI`
-- `CODEX_BIN`
-- `CODEX_EXECUTION_MODE`
-- `ALLOW_MOCK_DOCUMENTS`
+`ENABLE_MSAL_SHAREPOINT=false` is intentional for this MVP. Direct Graph access needs admin-approved Microsoft setup and is documented as future work.
 
-Set `ALLOW_MOCK_DOCUMENTS=false` in production when live SharePoint access must be mandatory.
+## Production-Style Local Build
+
+The MVP does not require a production server. If a production-style local build is needed, use `.env.production` with the same local document and Codex settings above.
