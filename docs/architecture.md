@@ -41,3 +41,14 @@ The chatbot never browses the internet. It only reads direct files from Microsof
 Nested folders are not explored. If the approved folder contains subfolders with other names, those subfolders are ignored.
 
 Local Codex is run with a read-only sandbox, no approvals, and approved document context only. The app never sends prompts to a paid cloud AI API.
+
+## Guardrail Prompt Order
+
+Prompts are built in this order:
+
+1. System Guardrails
+2. User Additional Guardrails
+3. Document Context
+4. User Question
+
+User additional guardrails cannot override the fixed system guardrails.

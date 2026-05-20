@@ -19,20 +19,26 @@ const secretString = z
 const sharePointConfigSchema = z.object({
   siteUrl: optionalString,
   folderPath: optionalString,
+  folderUrl: optionalString,
   tenantId: optionalString,
   clientId: optionalString,
   clientSecret: secretString,
   documentLibraryName: optionalString,
+  lastConnectionStatus: optionalString,
+  lastCheckedAt: z.string().optional(),
   updatedAt: z.string().optional()
 });
 
 export const emptySharePointConfig: SharePointConfig = {
   siteUrl: "",
   folderPath: "",
+  folderUrl: "",
   tenantId: "",
   clientId: "",
   clientSecret: "",
-  documentLibraryName: ""
+  documentLibraryName: "",
+  lastConnectionStatus: "",
+  lastCheckedAt: ""
 };
 
 export async function loadSharePointConfig(): Promise<SharePointConfig> {
@@ -40,12 +46,15 @@ export async function loadSharePointConfig(): Promise<SharePointConfig> {
 
   return sanitizeSharePointConfig({
     siteUrl: fromFile.siteUrl || process.env.SHAREPOINT_SITE_URL || "",
-    folderPath: fromFile.folderPath || process.env.SHAREPOINT_FOLDER_PATH || "",
+    folderPath: fromFile.folderPath || fromFile.folderUrl || process.env.SHAREPOINT_FOLDER_PATH || "",
+    folderUrl: fromFile.folderUrl || "",
     tenantId: fromFile.tenantId || process.env.SHAREPOINT_TENANT_ID || "",
     clientId: fromFile.clientId || process.env.SHAREPOINT_CLIENT_ID || "",
     clientSecret: fromFile.clientSecret || process.env.SHAREPOINT_CLIENT_SECRET || "",
     documentLibraryName:
       fromFile.documentLibraryName || process.env.SHAREPOINT_DOCUMENT_LIBRARY_NAME || "",
+    lastConnectionStatus: fromFile.lastConnectionStatus || "",
+    lastCheckedAt: fromFile.lastCheckedAt || "",
     updatedAt: fromFile.updatedAt
   });
 }
@@ -55,6 +64,25 @@ export async function saveSharePointConfig(input: unknown): Promise<SharePointCo
   const next = mergeSharePointConfigInput(existing, input, true);
 
   validateSharePointUrls(next);
+  await fs.mkdir(configDirectory, { recursive: true });
+  await fs.writeFile(sharePointConfigPath, `${JSON.stringify(next, null, 2)}\n`, {
+    mode: 0o600
+  });
+
+  return next;
+}
+
+export async function updateSharePointConnectionMetadata(input: {
+  status: string;
+  checkedAt?: string;
+}): Promise<SharePointConfig> {
+  const existing = await loadSharePointConfigFromFile();
+  const next = sanitizeSharePointConfig({
+    ...existing,
+    lastConnectionStatus: input.status,
+    lastCheckedAt: input.checkedAt || new Date().toISOString()
+  });
+
   await fs.mkdir(configDirectory, { recursive: true });
   await fs.writeFile(sharePointConfigPath, `${JSON.stringify(next, null, 2)}\n`, {
     mode: 0o600
@@ -79,7 +107,9 @@ export function toPublicSharePointConfig(config: SharePointConfig): PublicShareP
     clientSecretConfigured: Boolean(config.clientSecret),
     clientSecretMasked: config.clientSecret ? "********" : "",
     documentLibraryName: config.documentLibraryName || "",
-    activeFolder: getActiveFolderDisplay(config)
+    activeFolder: getActiveFolderDisplay(config),
+    lastConnectionStatus: config.lastConnectionStatus || "",
+    lastCheckedAt: config.lastCheckedAt || ""
   };
 }
 
@@ -126,11 +156,14 @@ function sanitizeSharePointConfig(input: unknown): SharePointConfig {
 
   return {
     siteUrl: parsed.siteUrl,
-    folderPath: parsed.folderPath,
+    folderPath: parsed.folderPath || parsed.folderUrl,
+    folderUrl: parsed.folderUrl || "",
     tenantId: parsed.tenantId,
     clientId: parsed.clientId,
     clientSecret: parsed.clientSecret,
     documentLibraryName: parsed.documentLibraryName,
+    lastConnectionStatus: parsed.lastConnectionStatus,
+    lastCheckedAt: parsed.lastCheckedAt,
     updatedAt: parsed.updatedAt
   };
 }

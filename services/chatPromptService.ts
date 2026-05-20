@@ -20,11 +20,10 @@ export function buildChatPrompt(input: {
   return [
     buildGuardrailsPrompt(input.guardrails),
     "",
-    "Approved document context:",
+    "DOCUMENT CONTEXT:",
     context || "No approved context was found.",
     "",
-    `Question: ${input.question}`,
-    "",
-    "Return a concise answer grounded only in the approved context."
+    "QUESTION:",
+    input.question
   ].join("\n");
 }

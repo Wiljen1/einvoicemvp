@@ -6,8 +6,8 @@ import {
   estimateOverallConfidence,
   searchDocuments
 } from "@/services/documentSearchService";
-import { loadGuardrails } from "@/services/guardrailsService";
-import { checkSharePointAccess, listApprovedDocuments } from "@/services/sharepointService";
+import { fallbackMessage, loadGuardrails } from "@/services/guardrailsService";
+import { getDocumentSourceStatus, listApprovedDocuments } from "@/services/sharepointService";
 import type { ChatAnswer } from "@/types/chat";
 
 export const runtime = "nodejs";
@@ -32,10 +32,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const [guardrails, codex, sharepoint] = await Promise.all([
+  const [guardrails, codex, documentsStatus] = await Promise.all([
     loadGuardrails(),
     detectCodexStatus(),
-    checkSharePointAccess()
+    getDocumentSourceStatus()
   ]);
 
   if (!codex.available) {
@@ -48,11 +48,11 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!sharepoint.available) {
+  if (!documentsStatus.available) {
     return NextResponse.json(
       {
         ok: false,
-        error: "SharePoint folder is not accessible."
+        error: "No document source is currently available."
       },
       { status: 503 }
     );
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
 
   if (contextChunks.length === 0) {
     const data: ChatAnswer = {
-      answer: guardrails.fallbackMessage,
+      answer: fallbackMessage,
       confidence: 0,
       sources: [],
       engine: codex.executionMode === "placeholder" ? "codex-placeholder" : "codex"
@@ -95,7 +95,7 @@ export async function POST(request: Request) {
   const data: ChatAnswer = {
     answer: codexResult.answer,
     confidence,
-    sources: guardrails.includeSources ? sources : [],
+    sources,
     engine: codexResult.engine
   };
 

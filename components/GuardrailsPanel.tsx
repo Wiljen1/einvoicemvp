@@ -1,31 +1,8 @@
 "use client";
 
-import { RefreshCw, Save, Shield } from "lucide-react";
+import { RefreshCw, RotateCcw, Save, Shield } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { GuardrailsConfig } from "@/types/guardrails";
-
-const checkboxFields: Array<{
-  key: keyof Pick<
-    GuardrailsConfig,
-    | "answerOnlyFromDocuments"
-    | "includeSources"
-    | "includeConfidenceScore"
-    | "allowInternetBrowsing"
-    | "keepAnswersShort"
-    | "doNotSpeculate"
-    | "sayWhenInformationIsMissing"
-  >;
-  label: string;
-  locked?: boolean;
-}> = [
-  { key: "answerOnlyFromDocuments", label: "Answer only from SharePoint documents", locked: true },
-  { key: "includeSources", label: "Include source references" },
-  { key: "includeConfidenceScore", label: "Include confidence score" },
-  { key: "allowInternetBrowsing", label: "Allow internet browsing", locked: true },
-  { key: "keepAnswersShort", label: "Keep answers short" },
-  { key: "doNotSpeculate", label: "Do not speculate" },
-  { key: "sayWhenInformationIsMissing", label: "Say when information is missing" }
-];
 
 interface GuardrailsPanelProps {
   onSaved: () => void;
@@ -86,7 +63,9 @@ export function GuardrailsPanel({ onSaved }: GuardrailsPanelProps) {
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify(guardrails)
+      body: JSON.stringify({
+        userGuardrails: guardrails.userGuardrails
+      })
     });
     const payload = await response.json();
 
@@ -101,8 +80,24 @@ export function GuardrailsPanel({ onSaved }: GuardrailsPanelProps) {
     setSaving(false);
   }
 
-  function updateField<K extends keyof GuardrailsConfig>(key: K, value: GuardrailsConfig[K]) {
-    setGuardrails((current) => (current ? { ...current, [key]: value } : current));
+  async function resetUserGuardrails() {
+    setSaving(true);
+    setStatus("");
+
+    const response = await fetch("/api/guardrails/reset-user", {
+      method: "POST"
+    });
+    const payload = await response.json();
+
+    if (!response.ok) {
+      setStatus(payload.error || "Unable to reset guardrails.");
+    } else {
+      setGuardrails(payload.data);
+      setStatus("Additional guardrails reset.");
+      onSaved();
+    }
+
+    setSaving(false);
   }
 
   return (
@@ -113,7 +108,7 @@ export function GuardrailsPanel({ onSaved }: GuardrailsPanelProps) {
             <Shield aria-hidden="true" size={19} />
             Guardrails
           </h2>
-          <p className="panel-subtitle">Rules applied before every answer.</p>
+          <p className="panel-subtitle">Fixed safety rules plus optional added instructions.</p>
         </div>
         <button
           aria-label="Refresh guardrails"
@@ -129,45 +124,48 @@ export function GuardrailsPanel({ onSaved }: GuardrailsPanelProps) {
 
       {guardrails ? (
         <div className="guardrail-form">
-          {checkboxFields.map((field) => (
-            <label className="guardrail-row" key={field.key}>
-              <input
-                checked={Boolean(guardrails[field.key])}
-                disabled={field.locked}
-                type="checkbox"
-                onChange={(event) => updateField(field.key, event.target.checked)}
-              />
-              <span>{field.label}</span>
-            </label>
-          ))}
+          <div className="system-guardrails" aria-label="System guardrails">
+            {guardrails.systemGuardrails.map((rule) => (
+              <div className="guardrail-fixed-row" key={rule}>
+                <span className="status-dot ok" />
+                <span>{rule}</span>
+              </div>
+            ))}
+          </div>
 
           <label className="form-field">
-            <span>Tone</span>
-            <select
-              className="select-field"
-              value={guardrails.tone}
-              onChange={(event) => updateField("tone", event.target.value)}
-            >
-              <option value="business-friendly">Business-friendly</option>
-              <option value="concise">Concise</option>
-              <option value="formal">Formal</option>
-              <option value="plain-language">Plain language</option>
-            </select>
-          </label>
-
-          <label className="form-field">
-            <span>Fallback message</span>
+            <span>Additional Guardrails</span>
             <textarea
               className="text-area"
-              value={guardrails.fallbackMessage}
-              onChange={(event) => updateField("fallbackMessage", event.target.value)}
+              placeholder="Example: Prefer bullet points for invoice workflow answers."
+              value={guardrails.userGuardrails}
+              onChange={(event) =>
+                setGuardrails((current) =>
+                  current ? { ...current, userGuardrails: event.target.value } : current
+                )
+              }
             />
+            <span className="field-help">
+              These instructions are added on top of the fixed safety guardrails. They cannot
+              override document-only answering rules.
+            </span>
           </label>
 
-          <button className="button" disabled={saving} type="button" onClick={saveGuardrails}>
-            <Save aria-hidden="true" size={16} />
-            {saving ? "Saving" : "Save Guardrails"}
-          </button>
+          <div className="settings-actions">
+            <button className="button" disabled={saving} type="button" onClick={saveGuardrails}>
+              <Save aria-hidden="true" size={16} />
+              {saving ? "Saving" : "Save Guardrails"}
+            </button>
+            <button
+              className="button secondary"
+              disabled={saving}
+              type="button"
+              onClick={resetUserGuardrails}
+            >
+              <RotateCcw aria-hidden="true" size={16} />
+              Reset Additional Guardrails
+            </button>
+          </div>
           {status ? <div className="field-help">{status}</div> : null}
         </div>
       ) : (

@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { defaultDocumentsDirectory, resolveInside } from "@/lib/paths";
 import type { ApprovedDocument } from "@/types/document";
-import type { SharePointConfig, SharePointStatus } from "@/types/sharepoint";
+import type { DocumentSourceStatus, SharePointConfig, SharePointStatus } from "@/types/sharepoint";
 import {
   getActiveFolderDisplay,
   hasCompleteSharePointCredentials,
@@ -53,6 +53,18 @@ export async function checkSharePointAccess(config?: SharePointConfig): Promise<
         mode: "sharepoint"
       };
     } catch (error) {
+      if (allowMockDocuments()) {
+        const mockStatus = await checkMockDocumentsAccess();
+        if (mockStatus.available) {
+          return {
+            available: true,
+            message: `SharePoint unavailable; using local mock documents. ${cleanError(error)}`,
+            activeFolder: mockStatus.activeFolder,
+            mode: "mock"
+          };
+        }
+      }
+
       return {
         available: false,
         message: `Unable to access SharePoint folder: ${cleanError(error)}`,
@@ -77,11 +89,59 @@ export async function checkSharePointAccess(config?: SharePointConfig): Promise<
   };
 }
 
+export async function getDocumentSourceStatus(
+  config?: SharePointConfig
+): Promise<DocumentSourceStatus> {
+  const status = await checkSharePointAccess(config);
+
+  if (status.mode === "sharepoint") {
+    const effectiveConfig = config || (await loadSharePointConfig());
+    return {
+      activeSource: "SHAREPOINT",
+      available: true,
+      displayName: "SharePoint folder",
+      folderUrl: getActiveFolderDisplay(effectiveConfig) || null,
+      folderPath: effectiveConfig.folderPath,
+      message: "SharePoint folder connected"
+    };
+  }
+
+  if (status.mode === "mock") {
+    return {
+      activeSource: "MOCK",
+      available: true,
+      displayName: "Local mock documents",
+      folderUrl: null,
+      folderPath: defaultDocumentsDirectory,
+      message: status.message.includes("SharePoint unavailable")
+        ? status.message
+        : "Using local mock documents"
+    };
+  }
+
+  return {
+    activeSource: "NONE",
+    available: false,
+    displayName: "No document source",
+    folderUrl: null,
+    folderPath: "",
+    message: "No document source is currently available."
+  };
+}
+
 export async function listApprovedDocuments(config?: SharePointConfig): Promise<ApprovedDocument[]> {
   const effectiveConfig = config || (await loadSharePointConfig());
 
   if (hasCompleteSharePointCredentials(effectiveConfig)) {
-    return listSharePointDocuments(effectiveConfig);
+    try {
+      return await listSharePointDocuments(effectiveConfig);
+    } catch {
+      if (allowMockDocuments()) {
+        return listMockDocuments();
+      }
+
+      return [];
+    }
   }
 
   if (allowMockDocuments()) {

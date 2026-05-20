@@ -6,6 +6,7 @@ import path from "node:path";
 import { codexOperatorsDirectory, projectRoot } from "@/lib/paths";
 import type { SearchResult } from "@/types/document";
 import type { GuardrailsConfig } from "@/types/guardrails";
+import { fallbackMessage } from "./guardrailsService";
 
 const DEFAULT_TIMEOUT_MS = 3000;
 const OPERATOR_TIMEOUT_MS = 90_000;
@@ -171,7 +172,7 @@ export async function executeCodexPrompt(input: CodexExecutionInput): Promise<Co
 
   if (executionMode === "placeholder") {
     return {
-      answer: buildPlaceholderAnswer(input.question, input.contextChunks, input.guardrails),
+      answer: buildPlaceholderAnswer(input.question, input.contextChunks),
       engine: "codex-placeholder"
     };
   }
@@ -181,7 +182,7 @@ export async function executeCodexPrompt(input: CodexExecutionInput): Promise<Co
   });
 
   return {
-    answer: operatorResult.output.trim() || input.guardrails.fallbackMessage,
+    answer: operatorResult.output.trim() || fallbackMessage,
     engine: "codex",
     stdout: operatorResult.stdout,
     stderr: operatorResult.stderr
@@ -264,11 +265,10 @@ export function stopCurrentCodexOperator(sessionId?: string): boolean {
 
 export function buildPlaceholderAnswer(
   question: string,
-  contextChunks: SearchResult[],
-  guardrails: GuardrailsConfig
+  contextChunks: SearchResult[]
 ): string {
   if (contextChunks.length === 0) {
-    return guardrails.fallbackMessage;
+    return fallbackMessage;
   }
 
   const terms = tokenize(question);
@@ -280,12 +280,12 @@ export function buildPlaceholderAnswer(
     });
 
   const selected = (sentences.length > 0 ? sentences : [contextChunks[0].snippet])
-    .slice(0, guardrails.keepAnswersShort ? 2 : 4)
+    .slice(0, 2)
     .map((sentence) => sentence.trim())
     .filter(Boolean);
 
   if (selected.length === 0) {
-    return guardrails.fallbackMessage;
+    return fallbackMessage;
   }
 
   return `MVP Codex placeholder answer: ${selected.join(" ")}`;

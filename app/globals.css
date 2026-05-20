@@ -260,6 +260,25 @@ a {
   gap: 12px;
 }
 
+.system-guardrails {
+  display: grid;
+  gap: 8px;
+}
+
+.guardrail-fixed-row {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  gap: 9px;
+  align-items: start;
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.guardrail-fixed-row .status-dot {
+  margin-top: 5px;
+}
+
 .guardrail-row {
   display: grid;
   grid-template-columns: 22px 1fr;

@@ -3,6 +3,7 @@
 import { Activity, PlugZap, RefreshCw, ServerCog, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ChatSessionStatus } from "@/types/chat";
+import type { DocumentSourceStatus } from "@/types/sharepoint";
 import { ProcessingProgressBar } from "./ProcessingProgressBar";
 
 interface StatusResponse {
@@ -21,6 +22,7 @@ interface StatusResponse {
       activeFolder: string;
       mode: "sharepoint" | "mock" | "unavailable";
     };
+    documents: DocumentSourceStatus;
   };
 }
 
@@ -66,7 +68,13 @@ export function StatusChecks({
   }, [refreshKey]);
 
   const codexAvailable = status?.codex.available;
-  const sharePointAvailable = status?.sharepoint.available;
+  const documentsAvailable = status?.documents.available;
+  const sourceLabel =
+    status?.documents.activeSource === "SHAREPOINT"
+      ? "SharePoint"
+      : status?.documents.activeSource === "MOCK"
+        ? "Mock documents"
+        : "None";
 
   async function testSharePointConnection() {
     setTesting(true);
@@ -103,16 +111,16 @@ export function StatusChecks({
 
       <div className="status-card">
         <div className="status-heading">
-          <span>SharePoint Connection</span>
+          <span>Document Source</span>
           <ShieldCheck aria-hidden="true" size={17} />
         </div>
         <p className="status-value">
-          <span className={`status-dot ${loading ? "pending" : sharePointAvailable ? "ok" : ""}`} />{" "}
-          {loading ? "Checking folder access" : status?.sharepoint.message || "SharePoint folder not accessible"}
+          <span className={`status-dot ${loading ? "pending" : documentsAvailable ? "ok" : ""}`} />{" "}
+          {loading ? "Checking folder access" : status?.documents.message || "No document source is currently available."}
         </p>
-        <span className="status-meta">{status?.sharepoint.mode || "unavailable"}</span>
+        <span className="status-meta">Active Source: {sourceLabel}</span>
         <p className="folder-path">
-          {status?.sharepoint.activeFolder || "No approved SharePoint folder configured"}
+          Folder: {status?.documents.folderUrl || status?.documents.folderPath || "No folder available"}
         </p>
         <div className="status-actions">
           <button className="button secondary" type="button" onClick={testSharePointConnection}>

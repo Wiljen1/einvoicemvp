@@ -8,8 +8,8 @@ import {
   stopCurrentCodexOperator
 } from "./codexService";
 import { estimateOverallConfidence, searchDocuments } from "./documentSearchService";
-import { loadGuardrails } from "./guardrailsService";
-import { checkSharePointAccess, listApprovedDocuments } from "./sharepointService";
+import { fallbackMessage, loadGuardrails } from "./guardrailsService";
+import { getDocumentSourceStatus, listApprovedDocuments } from "./sharepointService";
 import type { ChatAnswer, ChatSessionStatus } from "@/types/chat";
 
 const sessions = getSessionStore();
@@ -82,11 +82,11 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
     }
 
     updateSession(session, 20, "Checking SharePoint folder");
-    const sharepoint = await checkSharePointAccess();
+    const documentsStatus = await getDocumentSourceStatus();
     ensureNotCancelled(session);
 
-    if (!sharepoint.available) {
-      throw new Error("SharePoint folder is not accessible.");
+    if (!documentsStatus.available) {
+      throw new Error("No document source is currently available.");
     }
 
     updateSession(session, 32, "Loading guardrails");
@@ -100,7 +100,7 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
 
     if (contextChunks.length === 0) {
       completeSession(session, {
-        answer: guardrails.fallbackMessage,
+        answer: fallbackMessage,
         confidence: 0,
         sources: [],
         engine: codex.executionMode === "placeholder" ? "codex-placeholder" : "codex"
@@ -113,7 +113,7 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
       question: session.question,
       guardrails,
       contextChunks,
-      folderIdentifier: sharepoint.activeFolder
+      folderIdentifier: documentsStatus.folderUrl || documentsStatus.folderPath
     });
     const cachedAnswer = await getCachedChatAnswer(cacheKey);
     ensureNotCancelled(session);
@@ -149,7 +149,7 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
     const answer: ChatAnswer = {
       answer: codexResult.answer,
       confidence,
-      sources: guardrails.includeSources ? sources : [],
+      sources,
       engine: codexResult.engine,
       fromCache: false
     };

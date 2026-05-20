@@ -15,6 +15,8 @@ Use **Test Connection** to verify folder access without saving the draft values.
 
 Secrets are stored in `config/sharepoint.config.json`, which is ignored by Git. API responses only return whether a secret is configured.
 
+The dashboard reads the active document source from `GET /api/status`. It shows **Active Source: SharePoint** only when the configured SharePoint folder is connected. If SharePoint is unavailable and mock mode is enabled, it shows **Active Source: Mock documents**.
+
 ## Supported MVP Document Types
 
 The MVP extracts readable content from direct files in the configured folder:

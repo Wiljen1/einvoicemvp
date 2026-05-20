@@ -1,10 +1,13 @@
 export interface SharePointConfig {
   siteUrl: string;
   folderPath: string;
+  folderUrl?: string;
   tenantId: string;
   clientId: string;
   clientSecret?: string;
   documentLibraryName?: string;
+  lastConnectionStatus?: string;
+  lastCheckedAt?: string;
   updatedAt?: string;
 }
 
@@ -17,13 +20,25 @@ export interface PublicSharePointConfig {
   clientSecretMasked: string;
   documentLibraryName: string;
   activeFolder: string;
+  lastConnectionStatus: string;
+  lastCheckedAt: string;
 }
 
 export type ApprovedSourceMode = "sharepoint" | "mock" | "unavailable";
+export type DocumentSourceType = "SHAREPOINT" | "MOCK" | "NONE";
 
 export interface SharePointStatus {
   available: boolean;
   message: string;
   activeFolder: string;
   mode: ApprovedSourceMode;
+}
+
+export interface DocumentSourceStatus {
+  activeSource: DocumentSourceType;
+  available: boolean;
+  displayName: string;
+  folderUrl: string | null;
+  folderPath: string;
+  message: string;
 }

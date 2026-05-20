@@ -2,15 +2,21 @@
 
 Guardrails are stored in `config/guardrails.json` and can be edited from the dashboard.
 
-Default rules:
+The backend protects fixed system guardrails. The UI only saves the freeform `userGuardrails` field.
 
-- Answer only from approved documents.
-- Include source references.
-- Include confidence score.
+## System Guardrails
+
+System guardrails always win:
+
+- Answer only from the provided document context.
 - Do not browse the internet.
-- Keep answers short.
 - Do not speculate.
-- Say when information is missing.
+- Say when information is missing from the authorized SharePoint folder.
+- Include evidence and confidence.
 - Use business-friendly language.
 
-The backend always locks `answerOnlyFromDocuments=true` and `allowInternetBrowsing=false`, even if a malformed request tries to change them.
+## Additional Guardrails
+
+Users can add freeform instructions in **Additional Guardrails**. These are appended after the system guardrails in the prompt.
+
+Additional guardrails are additive only. If a user instruction conflicts with system guardrails, the system guardrail remains authoritative and the conflicting user line is ignored.

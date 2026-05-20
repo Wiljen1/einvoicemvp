@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 import { loadGuardrails, saveGuardrails } from "@/services/guardrailsService";
 
+export const runtime = "nodejs";
+
 export async function GET() {
   const guardrails = await loadGuardrails();
 

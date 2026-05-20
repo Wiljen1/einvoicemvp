@@ -8,6 +8,7 @@ interface SharePointConnectionStatusProps {
 }
 
 export function SharePointConnectionStatus({ status }: SharePointConnectionStatusProps) {
+  const sharePointConnected = status?.mode === "sharepoint" && status.available;
   const available = Boolean(status?.available);
   const Icon = available ? FolderCheck : FolderX;
 
@@ -24,8 +25,12 @@ export function SharePointConnectionStatus({ status }: SharePointConnectionStatu
           </p>
         </div>
       </div>
-      <div className={`notice ${available ? "success" : "error"}`}>
-        {available ? "SharePoint folder connected" : "Unable to access SharePoint folder"}
+      <div className={`notice ${sharePointConnected ? "success" : "error"}`}>
+        {sharePointConnected
+          ? "SharePoint folder connected"
+          : status?.mode === "mock"
+            ? "Using local mock documents"
+            : "Unable to access SharePoint folder"}
       </div>
       <p className="folder-path">{status?.activeFolder || "No active folder configured"}</p>
     </section>

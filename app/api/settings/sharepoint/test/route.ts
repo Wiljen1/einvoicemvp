@@ -4,7 +4,7 @@ import {
   loadSharePointConfig,
   toPublicSharePointConfig
 } from "@/services/sharepointConfigService";
-import { checkSharePointAccess } from "@/services/sharepointService";
+import { checkSharePointAccess, getDocumentSourceStatus } from "@/services/sharepointService";
 
 export const runtime = "nodejs";
 
@@ -14,13 +14,17 @@ export async function POST(request: Request) {
     const config = Object.keys(body || {}).length > 0
       ? await buildDraftSharePointConfig(body)
       : await loadSharePointConfig();
-    const status = await checkSharePointAccess(config);
+    const [status, documents] = await Promise.all([
+      checkSharePointAccess(config),
+      getDocumentSourceStatus(config)
+    ]);
 
     return NextResponse.json({
       ok: true,
       data: {
         config: toPublicSharePointConfig(config),
-        status
+        status,
+        documents
       }
     });
   } catch (error) {

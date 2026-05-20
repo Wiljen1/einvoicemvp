@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { detectCodexStatus } from "@/services/codexService";
-import { checkSharePointAccess } from "@/services/sharepointService";
+import { checkSharePointAccess, getDocumentSourceStatus } from "@/services/sharepointService";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const [codex, sharepoint] = await Promise.all([
+  const [codex, sharepoint, documents] = await Promise.all([
     detectCodexStatus(),
-    checkSharePointAccess()
+    checkSharePointAccess(),
+    getDocumentSourceStatus()
   ]);
 
   return NextResponse.json({
@@ -25,7 +26,8 @@ export async function GET() {
         message: sharepoint.message,
         activeFolder: sharepoint.activeFolder,
         mode: sharepoint.mode
-      }
+      },
+      documents
     }
   });
 }
