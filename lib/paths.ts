@@ -32,7 +32,7 @@ export const dataDirectory = path.join(projectRoot, "data");
 export const indexDatabasePath = getIndexDatabasePath();
 
 export function getIndexDatabasePath(): string {
-  return process.env.INDEX_DATABASE_PATH || path.join(dataDirectory, "einvoice-index.sqlite");
+  return process.env.INDEX_DATABASE_PATH || path.join(dataDirectory, "knowledge-index.sqlite");
 }
 
 export function resolveInside(baseDirectory: string, requestedPath: string): string {

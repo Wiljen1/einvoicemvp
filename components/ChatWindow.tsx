@@ -12,6 +12,7 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  question?: string;
   result?: ChatAnswer;
 }
 
@@ -56,7 +57,7 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
     };
   }, []);
 
-  async function askQuestion(question: string) {
+  async function askQuestion(question: string, options?: { forceFresh?: boolean }) {
     setLoading(true);
     setError("");
     const userMessage: Message = {
@@ -72,7 +73,7 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
         headers: {
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({ question })
+        body: JSON.stringify({ question, forceFresh: options?.forceFresh || false })
       });
       const payload = await response.json();
 
@@ -91,7 +92,7 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
 
       const status = payload.data as ChatSessionStatus;
       setProcessingStatus(status);
-      pollSession(status.sessionId);
+      pollSession(status.sessionId, question);
     } catch {
       const message = "Unable to reach the chat service.";
       setError(message);
@@ -105,7 +106,7 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
     }
   }
 
-  async function pollSession(sessionId: string) {
+  async function pollSession(sessionId: string, originalQuestion: string) {
     try {
       const response = await fetch(`/api/chat/status/${encodeURIComponent(sessionId)}`, {
         cache: "no-store"
@@ -120,7 +121,7 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
       setProcessingStatus(status);
 
       if (status.status === "RUNNING") {
-        pollTimer.current = setTimeout(() => pollSession(sessionId), 700);
+        pollTimer.current = setTimeout(() => pollSession(sessionId, originalQuestion), 700);
         return;
       }
 
@@ -133,12 +134,16 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
           sources: status.sources,
           engine: status.engine || "codex",
           fromCache: status.fromCache,
+          answerSource: status.answerSource,
+          similarityScore: status.similarityScore,
+          reusedFromQuestionId: status.reusedFromQuestionId,
           warning: status.warning
         };
         const assistantMessage: Message = {
           id: `assistant-${idCounter.current++}`,
           role: "assistant",
           content: answer.answer,
+          question: originalQuestion,
           result: answer
         };
         setMessages((current) => [...current, assistantMessage]);
@@ -216,7 +221,9 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
                   <span className="engine-badge">
                     <Sparkles aria-hidden="true" size={14} />
                     {message.result.fromCache
-                      ? "Loaded from cache"
+                      ? message.result.answerSource === "PREVIOUS_SIMILAR_QUESTION"
+                        ? "Previous similar question"
+                        : "Loaded from cache"
                       : message.result.engine === "codex"
                         ? "Codex"
                         : "Codex placeholder"}
@@ -224,6 +231,16 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
                 </div>
                 {message.result.warning ? (
                   <div className="notice warning">{message.result.warning}</div>
+                ) : null}
+                {message.result.answerSource === "PREVIOUS_SIMILAR_QUESTION" && message.question ? (
+                  <button
+                    className="button secondary inline-button"
+                    disabled={loading}
+                    type="button"
+                    onClick={() => askQuestion(message.question as string, { forceFresh: true })}
+                  >
+                    Run fresh search
+                  </button>
                 ) : null}
                 <SourceList sources={message.result.sources} />
               </>

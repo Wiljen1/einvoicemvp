@@ -1,5 +1,5 @@
-import { EInvoiceDashboard } from "@/components/EInvoiceDashboard";
+import { KnowledgeAssistantDashboard } from "@/components/KnowledgeAssistantDashboard";
 
 export default function HomePage() {
-  return <EInvoiceDashboard />;
+  return <KnowledgeAssistantDashboard />;
 }

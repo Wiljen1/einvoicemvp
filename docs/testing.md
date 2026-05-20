@@ -48,23 +48,25 @@ Verify status:
 curl http://localhost:3000/api/index/status
 ```
 
-The index should store `DocumentSource`, `IndexedDocument`, and `DocumentChunk` records in `data/einvoice-index.sqlite`.
+The index should store `DocumentSource`, `IndexedDocument`, and `DocumentChunk` records in `data/knowledge-index.sqlite`.
 
 ## Chat Validation Questions
 
-Use these questions after indexing:
+Use domain-specific questions for the active approved folder. Good validation questions should cover:
 
-- Which countries are supported for E-Invoicing?
-- What are the prerequisites for installing E-Invoicing?
-- What is the process for setting up E-Invoicing?
-- Are there any licensing requirements for E-Invoicing?
-- What should I check before positioning E-Invoicing to a customer?
+- supported scope
+- prerequisites
+- setup or process steps
+- licensing or access requirements
+- positioning, risk, or readiness checks
 
 Expected behavior:
 
 - answers use SQLite indexed chunks only
 - sources are returned
 - confidence is returned
+- question/answer history is saved when `LOG_CHAT_HISTORY=true`
+- similar high-confidence questions can be reused safely
 - no folder scan starts during chat
 - OCR count does not change during chat
 - unsupported details are refused or qualified
@@ -81,4 +83,4 @@ On 2026-05-20, the synced OneDrive SharePoint folder indexed successfully:
 - duplicate documents: 0
 - duplicate chunks: 0
 
-The five chat validation questions returned sources and confidence without triggering new index runs or OCR.
+The local validation questions returned sources and confidence without triggering new index runs or OCR.

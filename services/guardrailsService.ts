@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { z } from "zod";
 import { guardrailsConfigPath } from "@/lib/paths";
-import type { GuardrailsConfig } from "@/types/guardrails";
+import type { GuardrailCheckboxDefaults, GuardrailsConfig } from "@/types/guardrails";
 
 export const fallbackMessage =
   "I could not find enough information in the approved document source to answer this confidently.";
@@ -18,7 +18,16 @@ export const protectedSystemGuardrails = [
 
 const guardrailsSchema = z.object({
   systemGuardrails: z.array(z.string().trim().min(1).max(500)).optional(),
-  userGuardrails: z.string().max(4000).optional().default("")
+  checkboxDefaults: z
+    .object({
+      keepAnswersShort: z.boolean().optional(),
+      includeSources: z.boolean().optional(),
+      includeConfidenceScore: z.boolean().optional(),
+      sayWhenInformationIsMissing: z.boolean().optional(),
+      useBusinessFriendlyLanguage: z.boolean().optional()
+    })
+    .optional(),
+  userGuardrails: z.string().max(4000).optional()
 });
 
 const legacyGuardrailsSchema = z
@@ -29,6 +38,13 @@ const legacyGuardrailsSchema = z
 
 export const defaultGuardrails: GuardrailsConfig = {
   systemGuardrails: protectedSystemGuardrails,
+  checkboxDefaults: {
+    keepAnswersShort: true,
+    includeSources: true,
+    includeConfidenceScore: true,
+    sayWhenInformationIsMissing: true,
+    useBusinessFriendlyLanguage: true
+  },
   userGuardrails: ""
 };
 
@@ -41,6 +57,7 @@ export async function loadGuardrails(): Promise<GuardrailsConfig> {
     if (parsed.success && Array.isArray(parsedJson.systemGuardrails)) {
       return {
         systemGuardrails: protectedSystemGuardrails,
+        checkboxDefaults: normalizeCheckboxDefaults(parsed.data.checkboxDefaults),
         userGuardrails: parsed.data.userGuardrails || ""
       };
     }
@@ -62,9 +79,16 @@ export async function loadGuardrails(): Promise<GuardrailsConfig> {
 
 export async function saveGuardrails(input: unknown): Promise<GuardrailsConfig> {
   const parsed = guardrailsSchema.parse(input);
+  const current = await loadGuardrails().catch(() => defaultGuardrails);
   const next: GuardrailsConfig = {
     systemGuardrails: protectedSystemGuardrails,
-    userGuardrails: sanitizeUserGuardrails(parsed.userGuardrails || "")
+    checkboxDefaults: parsed.checkboxDefaults
+      ? normalizeCheckboxDefaults(parsed.checkboxDefaults)
+      : current.checkboxDefaults,
+    userGuardrails:
+      parsed.userGuardrails === undefined
+        ? current.userGuardrails
+        : sanitizeUserGuardrails(parsed.userGuardrails)
   };
 
   await writeGuardrails(next);
@@ -74,6 +98,7 @@ export async function saveGuardrails(input: unknown): Promise<GuardrailsConfig> 
 export async function resetUserGuardrails(): Promise<GuardrailsConfig> {
   const next: GuardrailsConfig = {
     systemGuardrails: protectedSystemGuardrails,
+    checkboxDefaults: defaultGuardrails.checkboxDefaults,
     userGuardrails: ""
   };
 
@@ -86,8 +111,45 @@ export function buildGuardrailsPrompt(guardrails: GuardrailsConfig): string {
     "SYSTEM GUARDRAILS:",
     guardrails.systemGuardrails.map((rule) => `- ${rule}`).join("\n"),
     "",
+    "STRUCTURED RESPONSE DEFAULTS:",
+    formatCheckboxDefaults(guardrails.checkboxDefaults),
+    "",
     "USER ADDITIONAL GUARDRAILS:",
     guardrails.userGuardrails.trim() || "None."
+  ].join("\n");
+}
+
+function normalizeCheckboxDefaults(
+  value: Partial<GuardrailCheckboxDefaults> | undefined
+): GuardrailCheckboxDefaults {
+  const defaults = defaultGuardrails.checkboxDefaults;
+
+  return {
+    keepAnswersShort: value?.keepAnswersShort ?? defaults.keepAnswersShort,
+    includeSources: value?.includeSources ?? defaults.includeSources,
+    includeConfidenceScore: value?.includeConfidenceScore ?? defaults.includeConfidenceScore,
+    sayWhenInformationIsMissing:
+      value?.sayWhenInformationIsMissing ?? defaults.sayWhenInformationIsMissing,
+    useBusinessFriendlyLanguage:
+      value?.useBusinessFriendlyLanguage ?? defaults.useBusinessFriendlyLanguage
+  };
+}
+
+function formatCheckboxDefaults(defaults: GuardrailCheckboxDefaults): string {
+  return [
+    defaults.keepAnswersShort ? "- Keep answers concise." : "- Answer length may be expanded when needed.",
+    defaults.includeSources
+      ? "- Include source references."
+      : "- Source references remain required by system safety rules.",
+    defaults.includeConfidenceScore
+      ? "- Include confidence score."
+      : "- Confidence handling remains required by system safety rules.",
+    defaults.sayWhenInformationIsMissing
+      ? "- Say clearly when information is missing from the approved document source."
+      : "- Missing-information refusal remains required by system safety rules.",
+    defaults.useBusinessFriendlyLanguage
+      ? "- Use business-friendly language."
+      : "- Use clear, neutral language."
   ].join("\n");
 }
 

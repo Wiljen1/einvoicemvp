@@ -12,7 +12,7 @@ The current MVP does not connect directly to SharePoint. Use OneDrive to sync th
 6. Enter the local OneDrive path, for example:
 
 ```text
-/Users/name/OneDrive - Company/Electronic Invoicing
+/Users/name/OneDrive - Company/Approved Documents
 ```
 
 7. Save settings.

@@ -2,6 +2,7 @@ import type { SourceReference } from "./document";
 
 export interface ChatRequestBody {
   question: string;
+  forceFresh?: boolean;
 }
 
 export interface ChatAnswer {
@@ -10,6 +11,9 @@ export interface ChatAnswer {
   sources: SourceReference[];
   engine: "codex" | "codex-placeholder";
   fromCache?: boolean;
+  answerSource?: "INDEXED_DOCUMENTS" | "PREVIOUS_SIMILAR_QUESTION" | "CACHE" | "REFUSAL";
+  similarityScore?: number;
+  reusedFromQuestionId?: string;
   warning?: string;
 }
 
@@ -26,6 +30,9 @@ export interface ChatSessionStatus {
   error: string | null;
   engine?: "codex" | "codex-placeholder";
   fromCache?: boolean;
+  answerSource?: ChatAnswer["answerSource"];
+  similarityScore?: number;
+  reusedFromQuestionId?: string;
   warning?: string;
 }
 

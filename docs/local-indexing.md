@@ -18,13 +18,13 @@ Chat does not rescan folders, re-extract Office files, or OCR images while answe
 Default path:
 
 ```bash
-data/einvoice-index.sqlite
+data/knowledge-index.sqlite
 ```
 
 Override:
 
 ```bash
-INDEX_DATABASE_PATH=/absolute/path/to/einvoice-index.sqlite
+INDEX_DATABASE_PATH=/absolute/path/to/knowledge-index.sqlite
 ```
 
 Tables:
@@ -33,6 +33,7 @@ Tables:
 - `IndexedDocument`: source id, relative path, absolute path, extension, size, modified time, checksum, extraction status, extraction mode, metadata, and indexed timestamp.
 - `DocumentChunk`: searchable text chunks with optional page, slide, or sheet metadata.
 - `IndexRun`: scan/update history, progress counts, OCR count, status, and errors.
+- `ChatSession`, `ChatMessage`, and `QuestionAnswerLog`: local question history, assistant answers, reuse metadata, response time, confidence, and sources.
 
 Documents are unique by `sourceId + relativePath`. Changed files replace old chunks instead of creating duplicates. Deleted files are marked missing and removed from active search.
 
@@ -82,7 +83,7 @@ No documents are indexed yet. Please run Scan / Update Document Index first.
 
 If chunks exist, chat searches `DocumentChunk` rows by keyword, filename, relative path, and metadata. Semantic embeddings are intentionally disabled for the MVP and represented by a future `EmbeddingService` hook.
 
-Chat requests do not start an index run, rescan folders, re-extract Office/PDF files, or run OCR. The only database reads during chat are active-source chunk search and status/cache lookups.
+Chat requests do not start an index run, rescan folders, re-extract Office/PDF files, or run OCR. The only database reads during chat are active-source chunk search, safe answer reuse checks, and status/cache lookups.
 
 ## Validation Commands
 
@@ -98,7 +99,7 @@ npm run build
 After indexing, verify the database has source, document, and chunk rows:
 
 ```bash
-node -e "const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync('data/einvoice-index.sqlite', { readOnly: true }); console.log(db.prepare('SELECT COUNT(*) AS documents FROM IndexedDocument WHERE isMissing = 0').get()); console.log(db.prepare('SELECT COUNT(*) AS chunks FROM DocumentChunk').get()); db.close();"
+node -e "const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync('data/knowledge-index.sqlite', { readOnly: true }); console.log(db.prepare('SELECT COUNT(*) AS documents FROM IndexedDocument WHERE isMissing = 0').get()); console.log(db.prepare('SELECT COUNT(*) AS chunks FROM DocumentChunk').get()); console.log(db.prepare('SELECT COUNT(*) AS questions FROM QuestionAnswerLog').get()); db.close();"
 ```
 
 ## Document Exclusions

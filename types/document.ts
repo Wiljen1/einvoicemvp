@@ -150,6 +150,8 @@ export interface DocumentIndex extends DocumentIndexStatus {
 }
 
 export interface DocumentChunk {
+  chunkId?: string;
+  documentId?: string;
   fileName: string;
   relativePath?: string;
   metadata?: ApprovedDocument["metadata"];

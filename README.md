@@ -1,6 +1,6 @@
-# E-Invoice MVP
+# Knowledge Assistant MVP
 
-Lightweight local web app for an approved-source e-invoicing chatbot. It runs on each colleague's machine, uses that machine's local Codex installation, and searches only the active local document source.
+Lightweight local web app for an approved-source knowledge assistant. It runs on each colleague's machine, uses that machine's local Codex installation, and searches only the active local document source.
 
 No paid hosting, centralized production server, cloud Codex API, or paid GPT API is required for the MVP.
 
@@ -48,23 +48,52 @@ OCR_LANGUAGE=eng
 OCR_MAX_FILE_SIZE_MB=50
 AUTO_INDEX_ON_STARTUP=true
 INDEX_DATABASE_PATH=
+LOG_CHAT_HISTORY=true
 ENABLE_MSAL_SHAREPOINT=false
 CODEX_ENABLE_SEARCH=false
 ```
 
-The dashboard shows small status pills for Codex, processing, source, and index freshness. Open **Document Index Details** to see the active folder, indexed document count, chunk count, skipped/failed files, OCR status, and last indexed time. Use **Scan / Update Document Index** after adding or removing files.
+Indexed text is stored in a local SQLite database under `data/knowledge-index.sqlite` by default. OCR and file extraction run during indexing only; chat questions search saved database chunks and do not rescan or OCR documents.
 
-Indexed text is stored in a local SQLite database under `data/einvoice-index.sqlite` by default. OCR and file extraction run during indexing only; chat questions search saved database chunks and do not rescan or OCR documents.
+## Question History And Reuse
 
-To validate services before indexing, open `/api/diagnostics` or run:
+When `LOG_CHAT_HISTORY=true`, the app stores questions, answers, confidence, sources, response time, cache-hit status, and active source metadata in SQLite. Before calling Codex, the app checks previous questions for the same active source.
 
-```bash
-curl http://localhost:3000/api/diagnostics
-```
+Previous answers are reused only when:
 
-It checks SQLite, the active document source, recursive scanning, OCR, registered extractors, and local Codex.
+- the question is an exact or high-similarity match
+- the active document source is unchanged
+- the document index has not changed since the prior answer
+- referenced source documents are still active
+- the prior answer was not low confidence
 
-Supported MVP files:
+Main chat clearly marks reused answers and offers **Run fresh search**. Admins can clear local question history from `/admin`.
+
+## Admin
+
+Open `/admin` for:
+
+- protected and additional guardrails
+- prompt structure preview
+- question history
+- analytics and trend cards
+- document index overview
+- local privacy/settings notes
+
+No admin authentication is enabled in this local MVP. Add authentication before using the admin area in a shared environment.
+
+## Codex Setup
+
+The app detects local Codex in this order:
+
+1. `CODEX_BIN` in `.env.local`
+2. macOS: `/Applications/Codex.app/Contents/Resources/codex`
+3. Windows common install paths under `%LOCALAPPDATA%`, `%PROGRAMFILES%`, and `%PROGRAMFILES(X86)%`
+4. `codex` from the system path
+
+`CODEX_ENABLE_SEARCH=false` is the default so local Codex does not receive the internet search flag.
+
+## Supported Files
 
 - `.txt`
 - `.md` / `.markdown`
@@ -79,44 +108,6 @@ Supported MVP files:
 - `.mp4`
 - `.url`
 
-PPTX slide text and speaker notes, DOCX text, and XLSX sheet/cell text are extracted when available. PNG/JPG/JPEG and scanned PDFs can use local OCR through `tesseract.js` when enabled. MP4 files are metadata-indexed and link nearby `.txt` or `.vtt` transcripts. URL shortcut files index the target URL and filename.
-
-## Codex Setup
-
-The app detects local Codex in this order:
-
-1. `CODEX_BIN` in `.env.local`
-2. macOS: `/Applications/Codex.app/Contents/Resources/codex`
-3. Windows common install paths under `%LOCALAPPDATA%`, `%PROGRAMFILES%`, and `%PROGRAMFILES(X86)%`
-4. `codex` from the system path
-
-To set it manually:
-
-```bash
-CODEX_BIN=/Applications/Codex.app/Contents/Resources/codex
-```
-
-Windows example:
-
-```bash
-CODEX_BIN=C:\Users\you\AppData\Local\Programs\Codex\codex.exe
-```
-
-The health check runs `codex --version`. If Codex is not found, the dashboard shows setup help.
-
-## Chat Behavior
-
-- Shows progress while processing.
-- Lets the user stop a running local Codex job.
-- Caches completed answers in `artifacts/cache`.
-- Writes local Codex prompt/output artifacts to `artifacts/codex-operators`.
-- Answers only from active approved document context.
-- Searches only saved SQLite chunks for the active source; it does not scan folders or OCR during chat.
-- Applies fixed safety guardrails plus additive user guardrails.
-- Refuses unsupported questions with the configured fallback message.
-
-`CODEX_ENABLE_SEARCH=false` is the default so local Codex does not receive the internet search flag.
-
 ## Scripts
 
 ```bash
@@ -129,14 +120,14 @@ npm run typecheck
 
 See also:
 
-- `docs/local-sharing.md`
-- `docs/codex-detection.md`
-- `docs/local-documents.md`
+- `docs/admin.md`
+- `docs/question-history.md`
+- `docs/answer-reuse.md`
+- `docs/guardrails.md`
+- `docs/analytics.md`
 - `docs/local-indexing.md`
 - `docs/testing.md`
-- `docs/sharepoint-setup.md`
 - `docs/synced-sharepoint-folder.md`
 - `docs/ocr-limitations.md`
 - `docs/future-sharepoint-integration.md`
 - `docs/troubleshooting.md`
-- `docs/manual-test-checklist.md`

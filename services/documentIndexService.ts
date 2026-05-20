@@ -26,7 +26,7 @@ const MAX_CONTENT_CHARS = 500_000;
 const DEFAULT_MAX_DEPTH = 10;
 
 declare global {
-  var __eInvoiceDocumentIndex: DocumentIndex | undefined;
+  var __knowledgeAssistantDocumentIndex: DocumentIndex | undefined;
 }
 
 interface LocalIndexOptions {
@@ -127,12 +127,12 @@ export async function refreshLocalDocumentIndex(): Promise<DocumentIndex> {
 }
 
 export function resetDocumentIndexForTests(): void {
-  globalThis.__eInvoiceDocumentIndex = undefined;
+  globalThis.__knowledgeAssistantDocumentIndex = undefined;
   resetIndexDatabaseForTests();
 }
 
 async function getLocalDocumentIndex(options?: LocalIndexOptions): Promise<DocumentIndex> {
-  const current = globalThis.__eInvoiceDocumentIndex;
+  const current = globalThis.__knowledgeAssistantDocumentIndex;
   const { folderPath } = await getActiveDocumentSourceConfig();
 
   if (!options?.force && current?.folderPath === folderPath) {
@@ -374,7 +374,7 @@ function buildIndex(input: {
 }
 
 function saveIndex(index: DocumentIndex): void {
-  globalThis.__eInvoiceDocumentIndex = index;
+  globalThis.__knowledgeAssistantDocumentIndex = index;
 }
 
 function toStatus(index: DocumentIndex): DocumentIndexStatus {

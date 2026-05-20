@@ -40,8 +40,8 @@ const CHUNK_OVERLAP = 120;
 const DEFAULT_MAX_DEPTH = 10;
 
 declare global {
-  var __eInvoiceIndexRuns: Map<string, IndexRunProgress> | undefined;
-  var __eInvoiceStartupIndexTriggered: boolean | undefined;
+  var __knowledgeAssistantIndexRuns: Map<string, IndexRunProgress> | undefined;
+  var __knowledgeAssistantStartupIndexTriggered: boolean | undefined;
 }
 
 interface ScannedFile {
@@ -648,11 +648,11 @@ async function ensureIndexableDirectory(
 }
 
 function getRunStore(): Map<string, IndexRunProgress> {
-  if (!globalThis.__eInvoiceIndexRuns) {
-    globalThis.__eInvoiceIndexRuns = new Map();
+  if (!globalThis.__knowledgeAssistantIndexRuns) {
+    globalThis.__knowledgeAssistantIndexRuns = new Map();
   }
 
-  return globalThis.__eInvoiceIndexRuns;
+  return globalThis.__knowledgeAssistantIndexRuns;
 }
 
 function updateProgress(progress: IndexRunProgress, patch: Partial<IndexRunProgress>): void {
@@ -706,7 +706,7 @@ function getLatestInMemoryRun(sourceId: string): IndexRunProgress | null {
 }
 
 function maybeAutoStartIndex(source: DocumentSourceRecord, needsUpdate: boolean, isEmpty: boolean): void {
-  if (process.env.AUTO_INDEX_ON_STARTUP !== "true" || globalThis.__eInvoiceStartupIndexTriggered) {
+  if (process.env.AUTO_INDEX_ON_STARTUP !== "true" || globalThis.__knowledgeAssistantStartupIndexTriggered) {
     return;
   }
 
@@ -714,7 +714,7 @@ function maybeAutoStartIndex(source: DocumentSourceRecord, needsUpdate: boolean,
     return;
   }
 
-  globalThis.__eInvoiceStartupIndexTriggered = true;
+  globalThis.__knowledgeAssistantStartupIndexTriggered = true;
   const running = Array.from(getRunStore().values()).some(
     (run) => run.sourceId === source.id && ["QUEUED", "RUNNING"].includes(run.status)
   );

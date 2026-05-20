@@ -493,7 +493,7 @@ export function DocumentSourceSettingsForm() {
             <span>Synced SharePoint Folder Path</span>
             <input
               className="text-field"
-              placeholder="/Users/name/OneDrive/.../Electronic Invoicing"
+              placeholder="/Users/name/OneDrive/.../Approved Documents"
               value={config.syncedFolderPath}
               onChange={(event) =>
                 setConfig((current) => ({

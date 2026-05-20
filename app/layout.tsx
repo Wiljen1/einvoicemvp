@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "E-Invoice MVP",
-  description: "Approved-source chatbot for e-invoicing documents"
+  title: "Knowledge Assistant",
+  description: "Local approved-source chatbot for indexed documents"
 };
 
 export default function RootLayout({

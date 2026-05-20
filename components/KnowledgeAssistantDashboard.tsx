@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { Settings } from "lucide-react";
+import { Settings, Shield } from "lucide-react";
 import { useState } from "react";
 import type { ChatSessionStatus } from "@/types/chat";
 import { ChatWindow } from "./ChatWindow";
-import { GuardrailsPanel } from "./GuardrailsPanel";
+import { GuardrailsSummary } from "./GuardrailsSummary";
 import { StatusChecks } from "./StatusChecks";
 
 const idleProcessingStatus: ChatSessionStatus = {
@@ -19,7 +19,7 @@ const idleProcessingStatus: ChatSessionStatus = {
   error: null
 };
 
-export function EInvoiceDashboard() {
+export function KnowledgeAssistantDashboard() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [processingStatus, setProcessingStatus] = useState<ChatSessionStatus>(
     idleProcessingStatus
@@ -30,13 +30,14 @@ export function EInvoiceDashboard() {
     <main className="page-shell">
       <header className="page-header">
         <div>
-          <h1>E-Invoice MVP</h1>
-          <p>
-            Local approved-source chatbot for client e-invoicing documents, with editable
-            guardrails and local document source controls.
-          </p>
+          <h1>Knowledge Assistant</h1>
+          <p>Local knowledge assistant for approved document sources, guardrails, and indexed answers.</p>
         </div>
         <div className="header-actions">
+          <Link className="button secondary" href="/admin">
+            <Shield aria-hidden="true" size={16} />
+            Admin
+          </Link>
           <Link className="button secondary" href="/settings/documents">
             <Settings aria-hidden="true" size={16} />
             Document Settings
@@ -52,7 +53,7 @@ export function EInvoiceDashboard() {
 
       <div className="dashboard-grid">
         <div className="side-stack">
-          <GuardrailsPanel onSaved={refresh} />
+          <GuardrailsSummary />
         </div>
         <ChatWindow onProcessingStatusChange={setProcessingStatus} />
       </div>

@@ -1,4 +1,6 @@
-# E-Invoicing MVP Approved Notes
+# Sample Domain Notes: E-Invoicing
+
+This is sample content for local indexing tests. It is not used by the production UI as a hardcoded domain assumption.
 
 The E-Invoice MVP is intended to help users answer questions about electronic invoicing workflows using only the active approved document source.
 

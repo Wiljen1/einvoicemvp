@@ -1,4 +1,11 @@
 import crypto from "node:crypto";
+import {
+  attachChatSessionSource,
+  beginPersistedChatSession,
+  findPossibleSimilarQuestion,
+  findReusableAnswer,
+  persistAssistantAnswer
+} from "./answerReuseService";
 import { buildChatPrompt } from "./chatPromptService";
 import { getCachedChatAnswer, buildChatCacheKey, saveCachedChatAnswer } from "./chatCacheService";
 import {
@@ -22,20 +29,22 @@ const noReadableDocumentsMessage =
 
 interface InternalChatSession extends ChatSessionStatus {
   question: string;
+  forceFresh: boolean;
   cancelled: boolean;
   createdAt: number;
   updatedAt: number;
 }
 
 declare global {
-  var __eInvoiceChatSessions: Map<string, InternalChatSession> | undefined;
+  var __knowledgeAssistantChatSessions: Map<string, InternalChatSession> | undefined;
 }
 
-export function startChatSession(question: string): ChatSessionStatus {
+export function startChatSession(question: string, options?: { forceFresh?: boolean }): ChatSessionStatus {
   const sessionId = crypto.randomUUID();
   const session: InternalChatSession = {
     sessionId,
     question,
+    forceFresh: options?.forceFresh || false,
     cancelled: false,
     status: "RUNNING",
     progress: 2,
@@ -49,6 +58,7 @@ export function startChatSession(question: string): ChatSessionStatus {
   };
 
   sessions.set(sessionId, session);
+  beginPersistedChatSession(sessionId, question);
   void runChatPipeline(session);
 
   return toPublicStatus(session);
@@ -89,21 +99,63 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
 
     updateSession(session, 20, "Checking document index");
     const indexStatus = await getActiveIndexStatus({ checkForUpdates: false });
+    attachChatSessionSource(session.sessionId, indexStatus.source.id);
     ensureNotCancelled(session);
 
     if (indexStatus.index.activeDocuments === 0 || indexStatus.index.activeChunks === 0) {
-      completeSession(session, {
+      const answer: ChatAnswer = {
         answer: noReadableDocumentsMessage,
         confidence: 0,
         sources: [],
-        engine: codex.executionMode === "placeholder" ? "codex-placeholder" : "codex"
+        engine: codex.executionMode === "placeholder" ? "codex-placeholder" : "codex",
+        answerSource: "REFUSAL"
+      };
+      persistAssistantAnswer({
+        sessionId: session.sessionId,
+        sourceId: indexStatus.source.id,
+        question: session.question,
+        answer,
+        responseTimeMs: Date.now() - startedAt,
+        codexUsed: false,
+        cacheHit: false,
+        answerSource: "REFUSAL",
+        indexStatus
       });
+      completeSession(session, answer);
       return;
     }
 
     updateSession(session, 32, "Loading guardrails");
     const guardrails = await loadGuardrails();
     ensureNotCancelled(session);
+
+    const reusableAnswer = findReusableAnswer({
+      question: session.question,
+      indexStatus,
+      forceFresh: session.forceFresh
+    });
+    if (reusableAnswer) {
+      persistAssistantAnswer({
+        sessionId: session.sessionId,
+        sourceId: indexStatus.source.id,
+        question: session.question,
+        answer: reusableAnswer.answer,
+        responseTimeMs: Date.now() - startedAt,
+        codexUsed: false,
+        cacheHit: true,
+        answerSource: "PREVIOUS_SIMILAR_QUESTION",
+        reusedFromLogId: reusableAnswer.match.log.id,
+        similarityScore: reusableAnswer.match.similarityScore,
+        indexStatus
+      });
+      completeSession(session, reusableAnswer.answer, "Answered from previous similar question");
+      return;
+    }
+
+    const possibleSimilar = findPossibleSimilarQuestion({
+      question: session.question,
+      indexStatus
+    });
 
     updateSession(session, 45, "Searching indexed documents");
     const contextChunks = await searchIndexedDocuments(session.question, { limit: 5 });
@@ -113,12 +165,29 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
     ensureNotCancelled(session);
 
     if (contextChunks.length === 0) {
-      completeSession(session, {
+      const answer: ChatAnswer = {
         answer: fallbackMessage,
         confidence: 0,
         sources: [],
-        engine: codex.executionMode === "placeholder" ? "codex-placeholder" : "codex"
+        engine: codex.executionMode === "placeholder" ? "codex-placeholder" : "codex",
+        answerSource: "REFUSAL",
+        warning: possibleSimilar
+          ? buildPossibleSimilarWarning(possibleSimilar.similarityScore)
+          : undefined
+      };
+      persistAssistantAnswer({
+        sessionId: session.sessionId,
+        sourceId: indexStatus.source.id,
+        question: session.question,
+        answer,
+        responseTimeMs: Date.now() - startedAt,
+        codexUsed: false,
+        cacheHit: false,
+        answerSource: "REFUSAL",
+        indexStatus,
+        retrievedChunks: contextChunks
       });
+      completeSession(session, answer);
       return;
     }
 
@@ -137,7 +206,29 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
     ensureNotCancelled(session);
 
     if (cachedAnswer) {
-      completeSession(session, cachedAnswer, "Loaded from cache");
+      const cachedWithMetadata: ChatAnswer = {
+        ...cachedAnswer,
+        answerSource: "CACHE",
+        warning:
+          cachedAnswer.warning || possibleSimilar
+            ? [cachedAnswer.warning, possibleSimilar ? buildPossibleSimilarWarning(possibleSimilar.similarityScore) : ""]
+                .filter(Boolean)
+                .join(" ")
+            : undefined
+      };
+      persistAssistantAnswer({
+        sessionId: session.sessionId,
+        sourceId: indexStatus.source.id,
+        question: session.question,
+        answer: cachedWithMetadata,
+        responseTimeMs: Date.now() - startedAt,
+        codexUsed: false,
+        cacheHit: true,
+        answerSource: "CACHE",
+        indexStatus,
+        retrievedChunks: contextChunks
+      });
+      completeSession(session, cachedWithMetadata, "Loaded from cache");
       return;
     }
 
@@ -176,10 +267,28 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
       sources,
       engine: codexResult.engine,
       fromCache: false,
-      warning: buildIndexWarning(indexStatus.index.status, indexStatus.index.lastIndexedAt)
+      answerSource: "INDEXED_DOCUMENTS",
+      warning: [
+        buildIndexWarning(indexStatus.index.status, indexStatus.index.lastIndexedAt),
+        possibleSimilar ? buildPossibleSimilarWarning(possibleSimilar.similarityScore) : ""
+      ]
+        .filter(Boolean)
+        .join(" ") || undefined
     };
 
     await saveCachedChatAnswer(cacheKey, answer);
+    persistAssistantAnswer({
+      sessionId: session.sessionId,
+      sourceId: indexStatus.source.id,
+      question: session.question,
+      answer,
+      responseTimeMs: Date.now() - startedAt,
+      codexUsed: codexResult.engine === "codex",
+      cacheHit: false,
+      answerSource: "INDEXED_DOCUMENTS",
+      indexStatus,
+      retrievedChunks: contextChunks
+    });
     ensureNotCancelled(session);
     updateSession(session, 98, "Returning answer");
     completeSession(session, answer);
@@ -215,6 +324,9 @@ function completeSession(
   session.error = null;
   session.engine = answer.engine;
   session.fromCache = answer.fromCache;
+  session.answerSource = answer.answerSource;
+  session.similarityScore = answer.similarityScore;
+  session.reusedFromQuestionId = answer.reusedFromQuestionId;
   session.warning = answer.warning;
   session.updatedAt = Date.now();
 }
@@ -256,16 +368,19 @@ function toPublicStatus(session: InternalChatSession): ChatSessionStatus {
     error: session.error,
     engine: session.engine,
     fromCache: session.fromCache,
+    answerSource: session.answerSource,
+    similarityScore: session.similarityScore,
+    reusedFromQuestionId: session.reusedFromQuestionId,
     warning: session.warning
   };
 }
 
 function getSessionStore(): Map<string, InternalChatSession> {
-  if (!globalThis.__eInvoiceChatSessions) {
-    globalThis.__eInvoiceChatSessions = new Map();
+  if (!globalThis.__knowledgeAssistantChatSessions) {
+    globalThis.__knowledgeAssistantChatSessions = new Map();
   }
 
-  return globalThis.__eInvoiceChatSessions;
+  return globalThis.__knowledgeAssistantChatSessions;
 }
 
 function buildIndexWarning(status: "FRESH" | "STALE" | "EMPTY", lastIndexedAt: string | null): string | undefined {
@@ -274,4 +389,10 @@ function buildIndexWarning(status: "FRESH" | "STALE" | "EMPTY", lastIndexedAt: s
   }
 
   return `The document index may be outdated. Last indexed: ${lastIndexedAt || "not indexed yet"}.`;
+}
+
+function buildPossibleSimilarWarning(similarityScore: number): string {
+  return `A similar question was asked before (${Math.round(
+    similarityScore * 100
+  )}% similar), so this answer was refreshed from the current document index.`;
 }

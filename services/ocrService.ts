@@ -81,7 +81,7 @@ export async function runPdfOcr(filePath: string, size: number): Promise<OcrResu
     };
   }
 
-  const tempDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "einvoice-ocr-"));
+  const tempDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "knowledge-assistant-ocr-"));
 
   try {
     const images = await renderPdfPagesToImages(filePath, tempDirectory, config.pdfMaxPages);

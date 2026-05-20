@@ -5,7 +5,7 @@ import { FormEvent, useState } from "react";
 
 interface ChatInputProps {
   disabled?: boolean;
-  onSubmit: (question: string) => Promise<void>;
+  onSubmit: (question: string, options?: { forceFresh?: boolean }) => Promise<void>;
 }
 
 export function ChatInput({ disabled, onSubmit }: ChatInputProps) {
@@ -28,7 +28,7 @@ export function ChatInput({ disabled, onSubmit }: ChatInputProps) {
         aria-label="Ask a question"
         className="text-area"
         maxLength={600}
-        placeholder="Ask about the approved e-invoicing documents..."
+        placeholder="Ask about the approved documents..."
         value={question}
         onChange={(event) => setQuestion(event.target.value)}
       />

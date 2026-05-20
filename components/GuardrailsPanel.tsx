@@ -137,7 +137,7 @@ export function GuardrailsPanel({ onSaved }: GuardrailsPanelProps) {
             <span>Additional Guardrails</span>
             <textarea
               className="text-area"
-              placeholder="Example: Prefer bullet points for invoice workflow answers."
+              placeholder="Example: Prefer bullet points for process answers."
               value={guardrails.userGuardrails}
               onChange={(event) =>
                 setGuardrails((current) =>

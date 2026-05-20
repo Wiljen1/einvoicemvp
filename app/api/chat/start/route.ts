@@ -5,13 +5,14 @@ import { startChatSession } from "@/services/chatSessionService";
 export const runtime = "nodejs";
 
 const chatRequestSchema = z.object({
-  question: z.string().trim().min(1).max(600)
+  question: z.string().trim().min(1).max(600),
+  forceFresh: z.boolean().optional().default(false)
 });
 
 export async function POST(request: Request) {
   try {
     const body = chatRequestSchema.parse(await request.json());
-    const status = startChatSession(body.question);
+    const status = startChatSession(body.question, { forceFresh: body.forceFresh });
 
     return NextResponse.json({
       ok: true,

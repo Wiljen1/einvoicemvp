@@ -348,6 +348,13 @@ describe("documentIndexRunService", () => {
       question: "What is the approved Portugal clearance flow?",
       guardrails: {
         systemGuardrails: ["Answer only from document context."],
+        checkboxDefaults: {
+          keepAnswersShort: true,
+          includeSources: true,
+          includeConfidenceScore: true,
+          sayWhenInformationIsMissing: true,
+          useBusinessFriendlyLanguage: true
+        },
         userGuardrails: ""
       },
       contextChunks: activeResults

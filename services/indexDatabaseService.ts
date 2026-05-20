@@ -10,6 +10,8 @@ type QueryValue = string | number | null;
 export type ExtractionStatus = "PENDING" | "INDEXED" | "PARTIAL" | "FAILED" | "SKIPPED";
 export type ExtractionMode = "TEXT" | "OCR" | "METADATA_ONLY" | "MIXED";
 export type IndexRunStatus = "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
+export type ChatMessageRole = "USER" | "ASSISTANT" | "SYSTEM";
+export type ConfidenceLevel = "High" | "Medium" | "Low";
 
 export interface DocumentSourceRecord {
   id: string;
@@ -86,6 +88,46 @@ export interface SearchableChunkRecord extends DocumentChunkRecord {
   indexedMode: DocumentIndexedMode;
   excludedFromChat: number;
   excludedFromIndexing: number;
+}
+
+export interface ChatSessionRecord {
+  id: string;
+  title: string | null;
+  sourceId: string | null;
+  startedAt: string;
+  updatedAt: string;
+}
+
+export interface ChatMessageRecord {
+  id: string;
+  sessionId: string;
+  role: ChatMessageRole;
+  content: string;
+  createdAt: string;
+}
+
+export interface QuestionAnswerLogRecord {
+  id: string;
+  sessionId: string | null;
+  sourceId: string | null;
+  question: string;
+  normalizedQuestion: string;
+  questionHash: string;
+  answer: string;
+  confidenceScore: number | null;
+  confidenceLevel: ConfidenceLevel | null;
+  sourcesJson: string | null;
+  retrievedChunkIdsJson: string | null;
+  responseTimeMs: number | null;
+  codexUsed: number;
+  cacheHit: number;
+  answerSource: string;
+  reusedFromLogId: string | null;
+  similarityScore: number | null;
+  indexSnapshotAt: string | null;
+  indexRunId: string | null;
+  sourceLastIndexedAt: string | null;
+  createdAt: string;
 }
 
 let database: DatabaseSync | null = null;
@@ -487,6 +529,214 @@ export function listSearchableChunks(sourceId: string): SearchableChunkRecord[] 
     .all(sourceId) as unknown as SearchableChunkRecord[];
 }
 
+export function createChatSession(input?: {
+  id?: string;
+  title?: string | null;
+  sourceId?: string | null;
+}): ChatSessionRecord {
+  const id = input?.id || cryptoRandomId();
+  const now = new Date().toISOString();
+  getIndexDatabase()
+    .prepare(
+      `INSERT OR IGNORE INTO ChatSession
+        (id, title, sourceId, startedAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+    .run(id, normalizeNullableText(input?.title)?.slice(0, 120) || null, input?.sourceId || null, now, now);
+
+  return getChatSessionById(id) as ChatSessionRecord;
+}
+
+export function updateChatSessionSource(sessionId: string, sourceId: string | null): void {
+  getIndexDatabase()
+    .prepare("UPDATE ChatSession SET sourceId = ?, updatedAt = ? WHERE id = ?")
+    .run(sourceId, new Date().toISOString(), sessionId);
+}
+
+export function getChatSessionById(sessionId: string): ChatSessionRecord | null {
+  return (
+    (getIndexDatabase().prepare("SELECT * FROM ChatSession WHERE id = ?").get(sessionId) as
+      | ChatSessionRecord
+      | undefined) || null
+  );
+}
+
+export function addChatMessage(input: {
+  sessionId: string;
+  role: ChatMessageRole;
+  content: string;
+}): ChatMessageRecord {
+  const id = cryptoRandomId();
+  const now = new Date().toISOString();
+  getIndexDatabase()
+    .prepare(
+      `INSERT INTO ChatMessage
+        (id, sessionId, role, content, createdAt)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+    .run(id, input.sessionId, input.role, input.content, now);
+  getIndexDatabase()
+    .prepare("UPDATE ChatSession SET updatedAt = ? WHERE id = ?")
+    .run(now, input.sessionId);
+
+  return getIndexDatabase()
+    .prepare("SELECT * FROM ChatMessage WHERE id = ?")
+    .get(id) as unknown as ChatMessageRecord;
+}
+
+export function saveQuestionAnswerLog(input: {
+  sessionId?: string | null;
+  sourceId?: string | null;
+  question: string;
+  normalizedQuestion: string;
+  questionHash: string;
+  answer: string;
+  confidenceScore?: number | null;
+  confidenceLevel?: ConfidenceLevel | null;
+  sourcesJson?: string | null;
+  retrievedChunkIdsJson?: string | null;
+  responseTimeMs?: number | null;
+  codexUsed: boolean;
+  cacheHit: boolean;
+  answerSource: string;
+  reusedFromLogId?: string | null;
+  similarityScore?: number | null;
+  indexSnapshotAt?: string | null;
+  indexRunId?: string | null;
+  sourceLastIndexedAt?: string | null;
+}): QuestionAnswerLogRecord {
+  const id = cryptoRandomId();
+  const now = new Date().toISOString();
+  getIndexDatabase()
+    .prepare(
+      `INSERT INTO QuestionAnswerLog
+        (id, sessionId, sourceId, question, normalizedQuestion, questionHash, answer,
+         confidenceScore, confidenceLevel, sourcesJson, retrievedChunkIdsJson, responseTimeMs,
+         codexUsed, cacheHit, answerSource, reusedFromLogId, similarityScore, indexSnapshotAt,
+         indexRunId, sourceLastIndexedAt, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      id,
+      input.sessionId || null,
+      input.sourceId || null,
+      input.question,
+      input.normalizedQuestion,
+      input.questionHash,
+      input.answer,
+      input.confidenceScore ?? null,
+      input.confidenceLevel ?? null,
+      input.sourcesJson ?? null,
+      input.retrievedChunkIdsJson ?? null,
+      input.responseTimeMs ?? null,
+      input.codexUsed ? 1 : 0,
+      input.cacheHit ? 1 : 0,
+      input.answerSource,
+      input.reusedFromLogId || null,
+      input.similarityScore ?? null,
+      input.indexSnapshotAt || null,
+      input.indexRunId || null,
+      input.sourceLastIndexedAt || null,
+      now
+    );
+
+  return getQuestionAnswerLogById(id) as QuestionAnswerLogRecord;
+}
+
+export function getQuestionAnswerLogById(id: string): QuestionAnswerLogRecord | null {
+  return (
+    (getIndexDatabase().prepare("SELECT * FROM QuestionAnswerLog WHERE id = ?").get(id) as
+      | QuestionAnswerLogRecord
+      | undefined) || null
+  );
+}
+
+export function listQuestionAnswerLogs(options?: {
+  sourceId?: string | null;
+  search?: string;
+  confidenceLevel?: ConfidenceLevel;
+  cacheHit?: boolean;
+  codexUsed?: boolean;
+  fromDate?: string;
+  toDate?: string;
+  limit?: number;
+}): QuestionAnswerLogRecord[] {
+  const where: string[] = [];
+  const values: QueryValue[] = [];
+
+  if (options?.sourceId) {
+    where.push("sourceId = ?");
+    values.push(options.sourceId);
+  }
+
+  if (options?.search?.trim()) {
+    where.push("(question LIKE ? OR answer LIKE ?)");
+    const term = `%${options.search.trim()}%`;
+    values.push(term, term);
+  }
+
+  if (options?.confidenceLevel) {
+    where.push("confidenceLevel = ?");
+    values.push(options.confidenceLevel);
+  }
+
+  if (options?.cacheHit !== undefined) {
+    where.push("cacheHit = ?");
+    values.push(options.cacheHit ? 1 : 0);
+  }
+
+  if (options?.codexUsed !== undefined) {
+    where.push("codexUsed = ?");
+    values.push(options.codexUsed ? 1 : 0);
+  }
+
+  if (options?.fromDate) {
+    where.push("createdAt >= ?");
+    values.push(options.fromDate);
+  }
+
+  if (options?.toDate) {
+    where.push("createdAt <= ?");
+    values.push(options.toDate);
+  }
+
+  const limit = Math.min(Math.max(options?.limit || 100, 1), 500);
+  values.push(limit);
+
+  return getIndexDatabase()
+    .prepare(
+      `SELECT * FROM QuestionAnswerLog
+       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+       ORDER BY createdAt DESC
+       LIMIT ?`
+    )
+    .all(...values) as unknown as QuestionAnswerLogRecord[];
+}
+
+export function listQuestionAnswerLogsForSimilarity(input: {
+  sourceId: string;
+  limit?: number;
+}): QuestionAnswerLogRecord[] {
+  const limit = Math.min(Math.max(input.limit || 250, 1), 1000);
+
+  return getIndexDatabase()
+    .prepare(
+      `SELECT * FROM QuestionAnswerLog
+       WHERE sourceId = ?
+       ORDER BY createdAt DESC
+       LIMIT ?`
+    )
+    .all(input.sourceId, limit) as unknown as QuestionAnswerLogRecord[];
+}
+
+export function deleteQuestionAnswerLogs(): number {
+  const db = getIndexDatabase();
+  const result = db.prepare("DELETE FROM QuestionAnswerLog").run();
+  db.prepare("DELETE FROM ChatMessage").run();
+  db.prepare("DELETE FROM ChatSession").run();
+  return Number(result.changes);
+}
+
 export function getIndexCounts(sourceId: string): {
   indexedDocuments: number;
   indexedChunks: number;
@@ -621,9 +871,59 @@ function initializeSchema(db: DatabaseSync): void {
       error TEXT,
       FOREIGN KEY(sourceId) REFERENCES DocumentSource(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS ChatSession (
+      id TEXT PRIMARY KEY,
+      title TEXT,
+      sourceId TEXT,
+      startedAt TEXT NOT NULL,
+      updatedAt TEXT NOT NULL,
+      FOREIGN KEY(sourceId) REFERENCES DocumentSource(id) ON DELETE SET NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS ChatMessage (
+      id TEXT PRIMARY KEY,
+      sessionId TEXT NOT NULL,
+      role TEXT NOT NULL,
+      content TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      FOREIGN KEY(sessionId) REFERENCES ChatSession(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS QuestionAnswerLog (
+      id TEXT PRIMARY KEY,
+      sessionId TEXT,
+      sourceId TEXT,
+      question TEXT NOT NULL,
+      normalizedQuestion TEXT NOT NULL,
+      questionHash TEXT NOT NULL,
+      answer TEXT NOT NULL,
+      confidenceScore REAL,
+      confidenceLevel TEXT,
+      sourcesJson TEXT,
+      retrievedChunkIdsJson TEXT,
+      responseTimeMs INTEGER,
+      codexUsed INTEGER NOT NULL DEFAULT 0,
+      cacheHit INTEGER NOT NULL DEFAULT 0,
+      answerSource TEXT NOT NULL DEFAULT 'INDEXED_DOCUMENTS',
+      reusedFromLogId TEXT,
+      similarityScore REAL,
+      indexSnapshotAt TEXT,
+      indexRunId TEXT,
+      sourceLastIndexedAt TEXT,
+      createdAt TEXT NOT NULL,
+      FOREIGN KEY(sessionId) REFERENCES ChatSession(id) ON DELETE SET NULL,
+      FOREIGN KEY(sourceId) REFERENCES DocumentSource(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_QuestionAnswerLog_source_created
+      ON QuestionAnswerLog(sourceId, createdAt DESC);
+    CREATE INDEX IF NOT EXISTS idx_QuestionAnswerLog_hash
+      ON QuestionAnswerLog(questionHash);
   `);
   ensureDocumentSourceIdentityColumns(db);
   ensureIndexedDocumentExclusionColumns(db);
+  ensureQuestionAnswerColumns(db);
 }
 
 function ensureDocumentSourceIdentityColumns(db: DatabaseSync): void {
@@ -679,6 +979,29 @@ function ensureIndexedDocumentExclusionColumns(db: DatabaseSync): void {
   for (const column of columns) {
     if (!existingColumns.has(column.name)) {
       db.exec(`ALTER TABLE IndexedDocument ADD COLUMN ${column.name} ${column.definition};`);
+    }
+  }
+}
+
+function ensureQuestionAnswerColumns(db: DatabaseSync): void {
+  const existingColumns = new Set(
+    (db.prepare("PRAGMA table_info(QuestionAnswerLog)").all() as Array<{ name: string }>).map(
+      (column) => column.name
+    )
+  );
+
+  const columns: Array<{ name: string; definition: string }> = [
+    { name: "answerSource", definition: "TEXT NOT NULL DEFAULT 'INDEXED_DOCUMENTS'" },
+    { name: "reusedFromLogId", definition: "TEXT" },
+    { name: "similarityScore", definition: "REAL" },
+    { name: "indexSnapshotAt", definition: "TEXT" },
+    { name: "indexRunId", definition: "TEXT" },
+    { name: "sourceLastIndexedAt", definition: "TEXT" }
+  ];
+
+  for (const column of columns) {
+    if (!existingColumns.has(column.name)) {
+      db.exec(`ALTER TABLE QuestionAnswerLog ADD COLUMN ${column.name} ${column.definition};`);
     }
   }
 }

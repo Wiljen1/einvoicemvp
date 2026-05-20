@@ -45,6 +45,8 @@ export async function searchIndexedDocuments(
       }, 0);
 
       return {
+        chunkId: chunk.id,
+        documentId: chunk.documentId,
         fileName: chunk.fileName,
         relativePath: chunk.relativePath,
         metadata,

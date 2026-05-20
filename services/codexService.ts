@@ -177,7 +177,7 @@ export async function executeCodexPrompt(input: CodexExecutionInput): Promise<Co
     };
   }
 
-  const operatorResult = await runCodexOperator(input.prompt, "E-Invoice MVP chat", {
+  const operatorResult = await runCodexOperator(input.prompt, "Knowledge Assistant chat", {
     sessionId: input.sessionId
   });
 

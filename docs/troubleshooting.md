@@ -48,7 +48,7 @@ If files are present but chat says no documents are indexed, click **Scan / Upda
 
 If a chat answer seems stale after adding files, run **Scan / Update Document Index** first. The MVP intentionally does not index during chat.
 
-The default SQLite index is stored at `data/einvoice-index.sqlite`. Set `INDEX_DATABASE_PATH=/absolute/path/to/einvoice-index.sqlite` if you want to store it elsewhere.
+The default SQLite index is stored at `data/knowledge-index.sqlite`. Set `INDEX_DATABASE_PATH=/absolute/path/to/knowledge-index.sqlite` if you want to store it elsewhere.
 
 ## Large Files
 
@@ -77,7 +77,9 @@ Use the **Stop** button in the chat progress area. The app sends a cancel reques
 
 ## Cached Answer Appears
 
-When the same question, guardrails, selected document chunks, and active folder match a previous completed run, the app reuses the cached response and shows **Loaded from cache**.
+When a high-similarity previous question is still safe to reuse, the app shows **Previous similar question** and offers **Run fresh search**. Reuse is disabled if the source changed, the index changed, source documents were excluded, or the prior answer was low confidence.
+
+Set `LOG_CHAT_HISTORY=false` to stop saving future question and answer logs. Existing logs can be cleared in `/admin`.
 
 Delete files in `artifacts/cache` to clear the local cache.
 
