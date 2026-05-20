@@ -12,6 +12,7 @@ import {
   refreshLocalDocumentIndex,
   resetDocumentIndexForTests
 } from "@/services/documentIndexService";
+import { getIndexRunProgress, startIndexRun } from "@/services/documentIndexRunService";
 import { searchDocuments } from "@/services/documentSearchService";
 
 vi.mock("pdf-parse", () => ({
@@ -47,6 +48,32 @@ vi.mock("pdf-parse/worker", () => ({
   getData: () => "data:text/javascript;base64,"
 }));
 
+vi.mock("node:child_process", async () => {
+  const fsSync = await import("node:fs");
+
+  return {
+    execFile: vi.fn((command: string, args: string[], callback: (error: Error | null, stdout: string, stderr: string) => void) => {
+      if (command === "pdftoppm") {
+        const prefix = args[args.length - 1];
+        fsSync.writeFileSync(`${prefix}-1.png`, "mock rendered page");
+        callback(null, "", "");
+        return {};
+      }
+
+      callback(new Error(`Unexpected command: ${command}`), "", "");
+      return {};
+    })
+  };
+});
+
+vi.mock("tesseract.js", () => ({
+  recognize: vi.fn(async (filePath: string) => ({
+    data: {
+      text: filePath.includes("blank") ? "" : "OCR extracted e-invoicing qualification text"
+    }
+  }))
+}));
+
 describe("documentIndexService", () => {
   let tempRoot = "";
 
@@ -57,6 +84,10 @@ describe("documentIndexService", () => {
     vi.stubEnv("SYNCED_SHAREPOINT_FOLDER_PATH", "");
     vi.stubEnv("MAX_TEXT_EXTRACTION_FILE_SIZE_MB", "100");
     vi.stubEnv("MAX_VIDEO_METADATA_FILE_SIZE_MB", "500");
+    vi.stubEnv("ENABLE_LOCAL_OCR", "false");
+    vi.stubEnv("OCR_LANGUAGE", "eng");
+    vi.stubEnv("OCR_MAX_FILE_SIZE_MB", "50");
+    vi.stubEnv("INDEX_DATABASE_PATH", `${tempRoot}.sqlite`);
     resetDocumentIndexForTests();
   });
 
@@ -64,6 +95,7 @@ describe("documentIndexService", () => {
     vi.unstubAllEnvs();
     resetDocumentIndexForTests();
     await fs.rm(tempRoot, { recursive: true, force: true });
+    await fs.rm(`${tempRoot}.sqlite`, { force: true });
   });
 
   it("resolves the default /documents path", () => {
@@ -95,7 +127,7 @@ describe("documentIndexService", () => {
     await fs.writeFile(path.join(tempRoot, "approved.md"), "Approved local content");
     await fs.writeFile(path.join(tempRoot, "data.json"), "{\"enabled\":true}");
     await fs.writeFile(path.join(tempRoot, "deck.pdf"), "PDF local text");
-    await fs.writeFile(path.join(tempRoot, "sheet.docx"), "not parsed");
+    await fs.writeFile(path.join(tempRoot, "legacy.doc"), "not parsed");
 
     const index = await refreshLocalDocumentIndex();
 
@@ -112,8 +144,8 @@ describe("documentIndexService", () => {
     expect(index.skippedFiles).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          fileName: "sheet.docx",
-          reason: expect.stringContaining("Unsupported file type (.docx)")
+          fileName: "legacy.doc",
+          reason: expect.stringContaining("Unsupported file type (.doc)")
         })
       ])
     );
@@ -171,26 +203,58 @@ describe("documentIndexService", () => {
     expect(index.documents[0].content).toContain("Nested PDF VAT content");
   });
 
-  it("skips scanned or unreadable PDFs gracefully", async () => {
+  it("indexes scanned or unreadable PDFs as metadata when OCR is disabled", async () => {
     vi.stubEnv("LOCAL_DOCUMENTS_PATH", tempRoot);
     await fs.writeFile(path.join(tempRoot, "scanned.pdf"), "SCANNED_PDF");
     await fs.writeFile(path.join(tempRoot, "broken.pdf"), "THROW_PDF");
 
     const index = await refreshLocalDocumentIndex();
 
-    expect(index.fileCount).toBe(0);
-    expect(index.skippedFiles).toEqual(
+    expect(index.fileCount).toBe(2);
+    expect(index.skippedFileCount).toBe(0);
+    expect(index.indexedFiles).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           fileName: "scanned.pdf",
-          reason: "PDF contains no extractable text or may be scanned."
+          indexedMode: "PARTIAL_METADATA",
+          metadata: expect.objectContaining({
+            ocrAttempted: false,
+            ocrProcessed: false,
+            ocrFailureReason: "OCR is disabled."
+          })
         }),
         expect.objectContaining({
           fileName: "broken.pdf",
-          reason: expect.stringContaining("Unable to extract PDF text")
+          indexedMode: "PARTIAL_METADATA",
+          metadata: expect.objectContaining({
+            ocrFailureReason: "OCR is disabled."
+          })
         })
       ])
     );
+  });
+
+  it("uses local OCR text for scanned PDFs when a local renderer is available", async () => {
+    vi.stubEnv("LOCAL_DOCUMENTS_PATH", tempRoot);
+    vi.stubEnv("ENABLE_LOCAL_OCR", "true");
+    await fs.writeFile(path.join(tempRoot, "scanned.pdf"), "SCANNED_PDF");
+
+    const index = await refreshLocalDocumentIndex();
+
+    expect(index.fileCount).toBe(1);
+    expect(index.ocrEnabled).toBe(true);
+    expect(index.ocrProcessedCount).toBe(1);
+    expect(index.indexedFiles[0]).toEqual(
+      expect.objectContaining({
+        fileName: "scanned.pdf",
+        indexedMode: "OCR_TEXT",
+        metadata: expect.objectContaining({
+          ocrAttempted: true,
+          ocrProcessed: true
+        })
+      })
+    );
+    expect(index.documents[0].content).toContain("OCR extracted e-invoicing qualification text");
   });
 
   it("refresh clears stale index entries", async () => {
@@ -228,6 +292,12 @@ describe("documentIndexService", () => {
     );
     await writeXlsxFixture(path.join(tempRoot, "Sales", "Implementation Tracker.xlsx"));
     await writePngFixture(path.join(tempRoot, "Qualification.png"));
+    await writeJpegFixture(path.join(tempRoot, "Qualification photo.jpg"));
+    await writeDocxFixture(
+      path.join(tempRoot, "Sales", "Sales Playbook.docx"),
+      "DOCX sales playbook text",
+      false
+    );
     await fs.writeFile(path.join(tempRoot, "Internal Demo.mp4"), "fake video bytes");
     await fs.writeFile(
       path.join(tempRoot, "EI Spain VeriFactu Setup.url"),
@@ -236,9 +306,9 @@ describe("documentIndexService", () => {
 
     const index = await refreshLocalDocumentIndex();
 
-    expect(index.fileCount).toBe(5);
+    expect(index.fileCount).toBe(7);
     expect(index.supportedExtensions).toEqual(
-      expect.arrayContaining([".pptx", ".xlsx", ".png", ".mp4", ".url"])
+      expect.arrayContaining([".docx", ".pptx", ".xlsx", ".png", ".jpg", ".jpeg", ".mp4", ".url"])
     );
     expect(index.indexedFiles.find((file) => file.extension === ".pptx")).toEqual(
       expect.objectContaining({
@@ -264,6 +334,102 @@ describe("documentIndexService", () => {
     );
     expect(index.indexedFiles.find((file) => file.extension === ".url")?.metadata.targetUrl).toBe(
       "https://internal.example/verifactu"
+    );
+    expect(index.indexedFiles.find((file) => file.extension === ".docx")?.indexedMode).toBe(
+      "FULL_TEXT"
+    );
+  });
+
+  it("indexes PNG and JPG OCR text when local OCR is enabled", async () => {
+    vi.stubEnv("LOCAL_DOCUMENTS_PATH", tempRoot);
+    vi.stubEnv("ENABLE_LOCAL_OCR", "true");
+    await writePngFixture(path.join(tempRoot, "Qualification.png"));
+    await writeJpegFixture(path.join(tempRoot, "Photo Evidence.jpeg"));
+
+    const index = await refreshLocalDocumentIndex();
+    const documents = await getLocalApprovedDocuments({ force: false });
+    const results = searchDocuments("qualification OCR", documents);
+
+    expect(index.fileCount).toBe(2);
+    expect(index.ocrProcessedCount).toBe(2);
+    expect(index.indexedFiles.every((file) => file.indexedMode === "OCR_TEXT")).toBe(true);
+    expect(results.length).toBeGreaterThan(0);
+  });
+
+  it("falls back to metadata-only image indexing when OCR is disabled", async () => {
+    vi.stubEnv("LOCAL_DOCUMENTS_PATH", tempRoot);
+    await writePngFixture(path.join(tempRoot, "Qualification.png"));
+
+    const index = await refreshLocalDocumentIndex();
+
+    expect(index.ocrEnabled).toBe(false);
+    expect(index.ocrProcessedCount).toBe(0);
+    expect(index.indexedFiles[0]).toEqual(
+      expect.objectContaining({
+        indexedMode: "PARTIAL_METADATA",
+        metadata: expect.objectContaining({
+          ocrAttempted: false,
+          ocrProcessed: false,
+          ocrFailureReason: "OCR is disabled."
+        })
+      })
+    );
+  });
+
+  it("records metadata-only fallback when OCR produces no image text", async () => {
+    vi.stubEnv("LOCAL_DOCUMENTS_PATH", tempRoot);
+    vi.stubEnv("ENABLE_LOCAL_OCR", "true");
+    await writePngFixture(path.join(tempRoot, "blank.png"));
+
+    const index = await refreshLocalDocumentIndex();
+
+    expect(index.indexedFiles[0]).toEqual(
+      expect.objectContaining({
+        indexedMode: "PARTIAL_METADATA",
+        metadata: expect.objectContaining({
+          ocrAttempted: true,
+          ocrProcessed: false,
+          ocrFailureReason: "OCR completed but did not find readable text."
+        })
+      })
+    );
+    expect(index.ocrFailedFiles[0]).toEqual(
+      expect.objectContaining({
+        relativePath: "blank.png",
+        reason: "OCR completed but did not find readable text."
+      })
+    );
+  });
+
+  it("warns when PPTX and DOCX embedded images are not OCR-indexed yet", async () => {
+    vi.stubEnv("LOCAL_DOCUMENTS_PATH", tempRoot);
+    await writePptxFixture(
+      path.join(tempRoot, "Visual Sales Deck.pptx"),
+      "Slide text",
+      "",
+      true
+    );
+    await writeDocxFixture(path.join(tempRoot, "Visual Policy.docx"), "Policy text", true);
+
+    const index = await refreshLocalDocumentIndex();
+
+    expect(index.indexedFiles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          fileName: "Visual Sales Deck.pptx",
+          metadata: expect.objectContaining({
+            embeddedImageCount: 1,
+            extractionWarnings: ["Embedded images were not OCR-indexed yet."]
+          })
+        }),
+        expect.objectContaining({
+          fileName: "Visual Policy.docx",
+          metadata: expect.objectContaining({
+            embeddedImageCount: 1,
+            extractionWarnings: ["Embedded images were not OCR-indexed yet."]
+          })
+        })
+      ])
     );
   });
 
@@ -341,6 +507,7 @@ describe("documentIndexService", () => {
   it("returns document status from the status endpoint", async () => {
     vi.stubEnv("LOCAL_DOCUMENTS_PATH", tempRoot);
     await fs.writeFile(path.join(tempRoot, "approved.txt"), "Approved local content");
+    await runIndexToCompletion();
 
     const response = await GET_STATUS();
     const payload = await response.json();
@@ -360,18 +527,62 @@ describe("documentIndexService", () => {
 
     const response = await POST_REFRESH();
     const payload = await response.json();
+    await waitForRunToCompletion(payload.data.id);
+    const statusResponse = await GET_STATUS();
+    const statusPayload = await statusResponse.json();
 
     expect(payload.ok).toBe(true);
-    expect(payload.data.fileCount).toBe(1);
-    expect(payload.data.indexedFiles[0].fileName).toBe("new-file.csv");
+    expect(statusPayload.data.fileCount).toBe(1);
+    expect(statusPayload.data.indexedFiles[0].fileName).toBe("new-file.csv");
   });
 });
 
-async function writePptxFixture(filePath: string, slideText: string, notesText: string): Promise<void> {
+async function runIndexToCompletion() {
+  const run = await startIndexRun();
+  return waitForRunToCompletion(run.id);
+}
+
+async function waitForRunToCompletion(runId: string) {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const current = getIndexRunProgress(runId);
+
+    if (current && current.status !== "QUEUED" && current.status !== "RUNNING") {
+      expect(current.status).toBe("COMPLETED");
+      return current;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 15));
+  }
+
+  throw new Error("Index run did not finish.");
+}
+
+async function writePptxFixture(
+  filePath: string,
+  slideText: string,
+  notesText: string,
+  withEmbeddedImage = false
+): Promise<void> {
   const zip = new JSZip();
   zip.file("ppt/slides/slide1.xml", `<p:sld><a:t>${slideText}</a:t></p:sld>`);
   if (notesText) {
     zip.file("ppt/notesSlides/notesSlide1.xml", `<p:notes><a:t>${notesText}</a:t></p:notes>`);
+  }
+  if (withEmbeddedImage) {
+    zip.file("ppt/media/image1.png", "image");
+  }
+  await fs.writeFile(filePath, await zip.generateAsync({ type: "nodebuffer" }));
+}
+
+async function writeDocxFixture(
+  filePath: string,
+  documentText: string,
+  withEmbeddedImage: boolean
+): Promise<void> {
+  const zip = new JSZip();
+  zip.file("word/document.xml", `<w:document><w:t>${documentText}</w:t></w:document>`);
+  if (withEmbeddedImage) {
+    zip.file("word/media/image1.png", "image");
   }
   await fs.writeFile(filePath, await zip.generateAsync({ type: "nodebuffer" }));
 }
@@ -390,5 +601,22 @@ async function writePngFixture(filePath: string): Promise<void> {
   buffer.write("PNG", 1, "ascii");
   buffer.writeUInt32BE(64, 16);
   buffer.writeUInt32BE(32, 20);
+  await fs.writeFile(filePath, buffer);
+}
+
+async function writeJpegFixture(filePath: string): Promise<void> {
+  const buffer = Buffer.from([
+    0xff, 0xd8,
+    0xff, 0xc0,
+    0x00, 0x11,
+    0x08,
+    0x00, 0x20,
+    0x00, 0x40,
+    0x03,
+    0x01, 0x11, 0x00,
+    0x02, 0x11, 0x00,
+    0x03, 0x11, 0x00,
+    0xff, 0xd9
+  ]);
   await fs.writeFile(filePath, buffer);
 }

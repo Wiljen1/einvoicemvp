@@ -3,9 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { GET as GET_DOCUMENT_SETTINGS, POST as POST_DOCUMENT_SETTINGS } from "@/app/api/settings/documents/route";
+import { GET as GET_DIAGNOSTICS } from "@/app/api/diagnostics/route";
 import { GET as GET_STATUS } from "@/app/api/status/route";
 import { documentSourceConfigPath } from "@/lib/paths";
 import { resetDocumentIndexForTests } from "@/services/documentIndexService";
+import { getIndexRunProgress, startIndexRun } from "@/services/documentIndexRunService";
 
 const originalEnv = { ...process.env };
 
@@ -26,22 +28,25 @@ describe("status endpoints", () => {
     process.env.DOCUMENT_SOURCE_MODE = "LOCAL_FOLDER";
     process.env.CODEX_BIN = "node";
     process.env.CODEX_FORCE_UNAVAILABLE = "false";
+    process.env.INDEX_DATABASE_PATH = `${tempDocumentsPath}.sqlite`;
     resetDocumentIndexForTests();
   });
 
   afterEach(async () => {
-    process.env = { ...originalEnv };
     resetDocumentIndexForTests();
+    process.env = { ...originalEnv };
     if (originalDocumentSourceConfig === null) {
       await fs.rm(documentSourceConfigPath, { force: true });
     } else {
       await fs.writeFile(documentSourceConfigPath, originalDocumentSourceConfig);
     }
     await fs.rm(tempDocumentsPath, { recursive: true, force: true });
+    await fs.rm(`${tempDocumentsPath}.sqlite`, { force: true });
   });
 
   it("returns the status response shape for active local documents", async () => {
     await fs.writeFile(path.join(tempDocumentsPath, "approved.md"), "Approved status content.");
+    await runIndexToCompletion();
 
     const response = await GET_STATUS();
     const payload = await response.json();
@@ -71,6 +76,7 @@ describe("status endpoints", () => {
     await fs.writeFile(path.join(syncedPath, "approved.md"), "Synced policy.");
     process.env.DOCUMENT_SOURCE_MODE = "SYNCED_SHAREPOINT_FOLDER";
     process.env.SYNCED_SHAREPOINT_FOLDER_PATH = syncedPath;
+    await runIndexToCompletion();
 
     const response = await GET_STATUS();
     const payload = await response.json();
@@ -101,6 +107,32 @@ describe("status endpoints", () => {
     expect(JSON.stringify(payload)).not.toContain("clientSecret");
   });
 
+  it("returns diagnostics for the active local indexing services", async () => {
+    const response = await GET_DIAGNOSTICS();
+    const payload = await response.json();
+
+    expect(payload.ok).toBe(true);
+    expect(payload.data).toEqual(
+      expect.objectContaining({
+        database: "OK",
+        activeSource: "OK",
+        recursiveScanner: "OK",
+        ocr: "OK",
+        codex: "OK"
+      })
+    );
+    expect(payload.data.extractors).toEqual(
+      expect.objectContaining({
+        pdf: "OK",
+        pptx: "OK",
+        xlsx: "OK",
+        image: "OK",
+        video: "OK",
+        url: "OK"
+      })
+    );
+  });
+
   it("saves document source settings and reflects them in status when local config is enabled", async () => {
     process.env.DOCUMENT_SOURCE_DISABLE_LOCAL_CONFIG = "false";
     const syncedPath = path.join(tempDocumentsPath, "synced");
@@ -118,6 +150,7 @@ describe("status endpoints", () => {
       })
     );
     const savePayload = await saveResponse.json();
+    await runIndexToCompletion();
     const response = await GET_STATUS();
     const payload = await response.json();
 
@@ -132,3 +165,20 @@ describe("status endpoints", () => {
     );
   });
 });
+
+async function runIndexToCompletion() {
+  const run = await startIndexRun();
+
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const current = getIndexRunProgress(run.id);
+
+    if (current && current.status !== "QUEUED" && current.status !== "RUNNING") {
+      expect(current.status).toBe("COMPLETED");
+      return current;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 15));
+  }
+
+  throw new Error("Index run did not finish.");
+}

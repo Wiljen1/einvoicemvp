@@ -10,6 +10,7 @@ export interface ChatAnswer {
   sources: SourceReference[];
   engine: "codex" | "codex-placeholder";
   fromCache?: boolean;
+  warning?: string;
 }
 
 export type ChatSessionState = "IDLE" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
@@ -25,6 +26,7 @@ export interface ChatSessionStatus {
   error: string | null;
   engine?: "codex" | "codex-placeholder";
   fromCache?: boolean;
+  warning?: string;
 }
 
 export interface ApiSuccess<T> {

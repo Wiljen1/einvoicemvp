@@ -28,18 +28,27 @@ Future direct SharePoint access is documented in `docs/future-sharepoint-integra
 
 ## Local Documents Not Showing
 
-Check the **Active Document Source** card on the dashboard. It shows the resolved folder path, indexed file count, skipped file count, supported file types, and last indexed time.
+Check the top status pills and open **Document Index Details** on the dashboard. It shows the resolved folder path, indexed document count, indexed chunk count, skipped/failed files, OCR state, update status, and last indexed time.
 
-Supported MVP file types are `.txt`, `.md`, `.markdown`, `.json`, `.csv`, `.pdf`, `.pptx`, `.xlsx`, `.png`, `.mp4`, and `.url`.
+Open `/api/diagnostics` if you need a quick service health check. It verifies the local index database, active source folder readability, recursive scanner, OCR setting, extractor registration, and local Codex availability.
+
+Supported MVP file types are `.txt`, `.md`, `.markdown`, `.json`, `.csv`, `.pdf`, `.docx`, `.pptx`, `.xlsx`, `.png`, `.jpg`, `.jpeg`, `.mp4`, and `.url`.
 
 Files may appear as:
 
-- **Fully indexed** when useful text was extracted.
+- **Full text** when useful text was extracted.
+- **OCR text** when useful text came from local OCR.
 - **Transcript linked** when a video has a nearby `.txt` or `.vtt` transcript.
-- **Metadata indexed only** when the app indexes filename, folder, and basic metadata.
+- **Metadata only** when the app indexes filename, folder, and basic metadata.
 - **Skipped** when a file is hidden/system, unreadable, corrupted, or outside the configured folder.
 
 Set `LOCAL_DOCUMENTS_PATH=/absolute/path/to/documents` in `.env.local` to use a different approved local folder.
+
+If files are present but chat says no documents are indexed, click **Scan / Update Document Index**. Chat does not rescan or OCR files during a question; it only searches the saved local index.
+
+If a chat answer seems stale after adding files, run **Scan / Update Document Index** first. The MVP intentionally does not index during chat.
+
+The default SQLite index is stored at `data/einvoice-index.sqlite`. Set `INDEX_DATABASE_PATH=/absolute/path/to/einvoice-index.sqlite` if you want to store it elsewhere.
 
 ## Large Files
 
@@ -50,6 +59,18 @@ MAX_TEXT_EXTRACTION_FILE_SIZE_MB=100
 MAX_VIDEO_METADATA_FILE_SIZE_MB=500
 ```
 
+## OCR Not Processing
+
+Confirm OCR is enabled:
+
+```bash
+ENABLE_LOCAL_OCR=true
+OCR_LANGUAGE=eng
+OCR_MAX_FILE_SIZE_MB=50
+```
+
+Image OCR uses local `tesseract.js`. Scanned PDF OCR also needs a local `pdftoppm` executable from Poppler. If that renderer is not available, scanned PDFs are kept as metadata-only assets and listed under **OCR not processed**.
+
 ## Stop A Running Codex Job
 
 Use the **Stop** button in the chat progress area. The app sends a cancel request and terminates the local Codex child process with `SIGTERM`.
@@ -59,3 +80,13 @@ Use the **Stop** button in the chat progress area. The app sends a cancel reques
 When the same question, guardrails, selected document chunks, and active folder match a previous completed run, the app reuses the cached response and shows **Loaded from cache**.
 
 Delete files in `artifacts/cache` to clear the local cache.
+
+## Chat Seems To Use External Knowledge
+
+The local Codex operator runs without internet search by default:
+
+```bash
+CODEX_ENABLE_SEARCH=false
+```
+
+Keep it disabled for approved-source validation. Answers should include source references from indexed SQLite chunks; unsupported questions should use the fallback message.

@@ -23,9 +23,14 @@ LOCAL_DOCUMENTS_RECURSIVE=true
 LOCAL_DOCUMENTS_MAX_DEPTH=10
 MAX_TEXT_EXTRACTION_FILE_SIZE_MB=100
 MAX_VIDEO_METADATA_FILE_SIZE_MB=500
+ENABLE_LOCAL_OCR=true
+OCR_LANGUAGE=eng
+OCR_MAX_FILE_SIZE_MB=50
+AUTO_INDEX_ON_STARTUP=true
+INDEX_DATABASE_PATH=
 ```
 
-The dashboard shows the resolved absolute folder path, indexed file count, skipped file count, supported file types, and last indexed time.
+The dashboard shows the resolved absolute folder path, indexed document count, indexed chunk count, skipped/failed file count, OCR state, and last indexed time in **Document Index Details**.
 
 ## Supported Files
 
@@ -37,21 +42,39 @@ The MVP indexes:
 - `.json`
 - `.csv`
 - text-based `.pdf`
+- `.docx`
 - `.pptx`
 - `.xlsx`
 - `.png`
+- `.jpg`
+- `.jpeg`
 - `.mp4`
 - `.url`
 
-PPTX extracts slide text and speaker notes when available. XLSX extracts sheet names and non-empty cell text. PNG and MP4 files are indexed as searchable assets; MP4 files link nearby `.txt` or `.vtt` transcripts when present. URL shortcut files index the target URL and filename.
+PPTX extracts slide text and speaker notes when available. DOCX extracts document text. XLSX extracts sheet names and non-empty cell text. PNG/JPG/JPEG files use local OCR when enabled, otherwise they are metadata-indexed. MP4 files are indexed as searchable assets and link nearby `.txt` or `.vtt` transcripts when present. URL shortcut files index the target URL and filename.
 
-Scanned PDFs are skipped because OCR is not included yet. DOCX extraction is future work.
+Scanned PDFs first try normal PDF text extraction, then local OCR fallback when enabled. If OCR is unavailable or fails, the file is still metadata-indexed with a visible reason.
 
 ## Indexing Modes
 
 - `FULL_TEXT`: searchable text was extracted.
+- `OCR_TEXT`: searchable text came from local OCR.
 - `TRANSCRIPT_LINKED`: a video was indexed with a nearby transcript.
 - `PARTIAL_METADATA`: filename, folder, and useful metadata were indexed.
+
+## Local OCR
+
+OCR is local-only and does not call external APIs:
+
+```bash
+ENABLE_LOCAL_OCR=true
+OCR_LANGUAGE=eng
+OCR_MAX_FILE_SIZE_MB=50
+```
+
+Image OCR works directly through `tesseract.js`. Scanned PDF OCR additionally needs a local PDF renderer (`pdftoppm`, commonly installed with Poppler). Without that renderer, scanned PDFs are metadata-indexed and the UI shows why OCR could not be processed.
+
+Embedded images inside PPTX/DOCX are detected, but not OCR-indexed yet. Those files show the warning: “Embedded images were not OCR-indexed yet.”
 
 ## Recursive Scanning
 
@@ -67,7 +90,15 @@ Nested folders are scanned inside the configured root only. The scanner:
 
 ## Refreshing
 
-After adding or removing files, click **Refresh Documents** on the dashboard. The app clears the previous local index and rebuilds it without restarting.
+After adding or removing files, click **Scan / Update Document Index** on the dashboard or document settings page. The app scans the folder, extracts/OCRs only new or changed files, updates the local SQLite index, and leaves unchanged files alone.
+
+Chat questions search the saved SQLite chunks only. If no documents are indexed, chat returns:
+
+```text
+No documents are indexed yet. Please run Scan / Update Document Index first.
+```
+
+See `docs/local-indexing.md` for the database tables and stale-index behavior.
 
 ## Git Safety
 

@@ -13,9 +13,12 @@ import type {
 } from "@/types/document";
 import {
   extractTextFromFile,
+  getRegisteredExtractorNames,
   getSupportedExtractorExtensions
 } from "./documentExtractors";
 import { getActiveDocumentSourceConfig } from "./documentSourceConfigService";
+import { resetIndexDatabaseForTests } from "./indexDatabaseService";
+import { isLocalOcrEnabled } from "./ocrService";
 
 const SKIPPED_DIRECTORIES = new Set(["node_modules", ".git", ".next", "dist", "build", "coverage"]);
 const MAX_DOCUMENTS = 100;
@@ -125,6 +128,7 @@ export async function refreshLocalDocumentIndex(): Promise<DocumentIndex> {
 
 export function resetDocumentIndexForTests(): void {
   globalThis.__eInvoiceDocumentIndex = undefined;
+  resetIndexDatabaseForTests();
 }
 
 async function getLocalDocumentIndex(options?: LocalIndexOptions): Promise<DocumentIndex> {
@@ -237,7 +241,12 @@ async function indexFile(
     width: extracted.metadata.width,
     height: extracted.metadata.height,
     transcriptPath: extracted.metadata.transcriptPath,
-    targetUrl: extracted.metadata.targetUrl
+    targetUrl: extracted.metadata.targetUrl,
+    ocrAttempted: extracted.metadata.ocrAttempted,
+    ocrProcessed: extracted.metadata.ocrProcessed,
+    ocrFailureReason: extracted.metadata.ocrFailureReason,
+    extractionWarnings: extracted.metadata.extractionWarnings,
+    embeddedImageCount: extracted.metadata.embeddedImageCount
   };
 
   context.documents.push({
@@ -264,6 +273,11 @@ async function indexFile(
     lastModified,
     sourceType: context.sourceType,
     indexedMode: extracted.indexedMode,
+    excludedFromChat: false,
+    excludedFromIndexing: false,
+    exclusionReason: null,
+    excludedAt: null,
+    excludedBy: null,
     metadata
   });
 }
@@ -308,9 +322,51 @@ function buildIndex(input: {
     indexedFiles: input.indexedFiles,
     skippedFiles: input.skippedFiles,
     fileCount: input.indexedFiles.length,
+    activeFileCount: input.indexedFiles.filter((file) => !file.excludedFromChat).length,
+    chatExcludedFileCount: input.indexedFiles.filter((file) => file.excludedFromChat).length,
+    indexExcludedFileCount: input.indexedFiles.filter((file) => file.excludedFromIndexing).length,
     skippedFileCount: input.skippedFiles.length,
+    failedFileCount: input.skippedFiles.filter((file) => /failed/i.test(file.reason)).length,
     indexedCount: input.indexedFiles.length,
     skippedCount: input.skippedFiles.length,
+    ocrEnabled: isLocalOcrEnabled(),
+    ocrProcessedCount: input.indexedFiles.filter((file) => file.metadata.ocrProcessed).length,
+    ocrFailedFiles: input.indexedFiles
+      .filter((file) => file.metadata.ocrAttempted && !file.metadata.ocrProcessed)
+      .map((file) => ({
+        fileName: file.fileName,
+        relativePath: file.relativePath,
+        extension: file.extension,
+        reason: file.metadata.ocrFailureReason || "OCR did not produce readable text."
+      })),
+    startupValidation: {
+      database: {
+        connected: true,
+        message: "Local index database connected"
+      },
+      ocrService: {
+        loaded: true,
+        enabled: isLocalOcrEnabled(),
+        message: isLocalOcrEnabled()
+          ? "OCR service enabled"
+          : "OCR service is disabled. Scanned documents may not be searchable."
+      },
+      activeSource: {
+        available: input.exists,
+        type: input.activeSource,
+        rootPath: input.folderPath,
+        message: input.exists
+          ? "Active document source accessible"
+          : "Active document source is not accessible"
+      },
+      extractors: {
+        registered: getRegisteredExtractorNames(),
+        supportedExtensions: getSupportedLocalDocumentExtensions()
+      },
+      warnings: isLocalOcrEnabled()
+        ? []
+        : ["OCR service is disabled. Scanned documents may not be searchable."]
+    },
     lastIndexedAt: input.indexedAt,
     message: input.message,
     documents: input.documents
@@ -383,7 +439,10 @@ function logDocumentIndex(index: DocumentIndex, foundCount: number): void {
       `exists=${index.exists}`,
       `found=${foundCount}`,
       `indexed=${index.fileCount}`,
-      `skipped=${index.skippedFileCount}`
+      `skipped=${index.skippedFileCount}`,
+      `ocrEnabled=${index.ocrEnabled}`,
+      `ocrProcessed=${index.ocrProcessedCount}`,
+      `ocrFailed=${index.ocrFailedFiles.length}`
     ].join(" ")
   );
 

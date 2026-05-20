@@ -1,12 +1,14 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import type { DocumentIndexedMode } from "@/types/document";
+import { extractDocxText } from "./docxExtractor";
 import { extractImageMetadata } from "./imageExtractor";
 import { extractPdfText } from "./pdfExtractor";
 import { extractPptxText } from "./pptxExtractor";
 import { extractUrlFile } from "./urlExtractor";
-import { extractVideoMetadata } from "./videoExtractor";
+import { extractVideoMetadata } from "./videoMetadataExtractor";
 import { extractXlsxText } from "./xlsxExtractor";
+import { runPdfOcr } from "./ocrExtractor";
 
 export interface ExtractedDocument {
   text: string;
@@ -21,6 +23,11 @@ export interface ExtractedDocument {
     height?: number;
     transcriptPath?: string;
     targetUrl?: string;
+    ocrAttempted?: boolean;
+    ocrProcessed?: boolean;
+    ocrFailureReason?: string;
+    extractionWarnings?: string[];
+    embeddedImageCount?: number;
   };
 }
 
@@ -35,15 +42,64 @@ const TEXT_EXTENSIONS = new Set([".txt", ".md", ".markdown", ".json", ".csv"]);
 const SUPPORTED_EXTENSIONS = new Set([
   ...TEXT_EXTENSIONS,
   ".pdf",
+  ".docx",
   ".pptx",
   ".xlsx",
   ".png",
+  ".jpg",
+  ".jpeg",
   ".mp4",
   ".url"
 ]);
 
+export const REGISTERED_EXTRACTORS = [
+  {
+    name: "pdfExtractor",
+    extensions: [".pdf"]
+  },
+  {
+    name: "ocrExtractor",
+    extensions: [".pdf", ".png", ".jpg", ".jpeg"]
+  },
+  {
+    name: "pptxExtractor",
+    extensions: [".pptx"]
+  },
+  {
+    name: "xlsxExtractor",
+    extensions: [".xlsx"]
+  },
+  {
+    name: "imageExtractor",
+    extensions: [".png", ".jpg", ".jpeg"]
+  },
+  {
+    name: "urlExtractor",
+    extensions: [".url"]
+  },
+  {
+    name: "videoMetadataExtractor",
+    extensions: [".mp4"]
+  },
+  {
+    name: "textExtractor",
+    extensions: Array.from(TEXT_EXTENSIONS).sort()
+  }
+] as const;
+
 export function getSupportedExtractorExtensions(): string[] {
   return Array.from(SUPPORTED_EXTENSIONS).sort();
+}
+
+export function getRegisteredExtractorNames(): string[] {
+  return REGISTERED_EXTRACTORS.map((extractor) => extractor.name);
+}
+
+export function getExtractorRegistryStatus(): Array<{ name: string; extensions: string[] }> {
+  return REGISTERED_EXTRACTORS.map((extractor) => ({
+    name: extractor.name,
+    extensions: [...extractor.extensions]
+  }));
 }
 
 export async function extractTextFromFile(input: {
@@ -78,10 +134,7 @@ export async function extractTextFromFile(input: {
       const extracted = await extractPdfText(input.filePath);
 
       if (!extracted.text.trim()) {
-        return {
-          skipped: true,
-          reason: "PDF contains no extractable text or may be scanned."
-        };
+        return buildPdfOcrFallbackDocument(input, extension, extracted.metadata.pageCount);
       }
 
       return {
@@ -93,11 +146,21 @@ export async function extractTextFromFile(input: {
         }
       };
     } catch (error) {
-      return {
-        skipped: true,
-        reason: `Unable to extract PDF text: ${cleanExtractionError(error)}`
-      };
+      return buildPdfOcrFallbackDocument(input, extension, undefined, cleanExtractionError(error));
     }
+  }
+
+  if (extension === ".docx") {
+    const extracted = await extractDocxText({ ...input, metadataOnly });
+    return {
+      text: extracted.text,
+      indexedMode: extracted.partial ? "PARTIAL_METADATA" : "FULL_TEXT",
+      metadata: {
+        extension,
+        embeddedImageCount: extracted.metadata.embeddedImageCount,
+        extractionWarnings: extracted.metadata.extractionWarnings
+      }
+    };
   }
 
   if (extension === ".pptx") {
@@ -107,7 +170,9 @@ export async function extractTextFromFile(input: {
       indexedMode: extracted.partial ? "PARTIAL_METADATA" : "FULL_TEXT",
       metadata: {
         extension,
-        slideCount: extracted.metadata.slideCount
+        slideCount: extracted.metadata.slideCount,
+        embeddedImageCount: extracted.metadata.embeddedImageCount,
+        extractionWarnings: extracted.metadata.extractionWarnings
       }
     };
   }
@@ -125,15 +190,19 @@ export async function extractTextFromFile(input: {
     };
   }
 
-  if (extension === ".png") {
+  if (extension === ".png" || extension === ".jpg" || extension === ".jpeg") {
     const extracted = await extractImageMetadata(input);
     return {
       text: extracted.text,
-      indexedMode: "PARTIAL_METADATA",
+      indexedMode: extracted.metadata.ocrProcessed ? "OCR_TEXT" : "PARTIAL_METADATA",
       metadata: {
         extension,
         width: extracted.metadata.width,
-        height: extracted.metadata.height
+        height: extracted.metadata.height,
+        ocrAttempted: extracted.metadata.ocrAttempted,
+        ocrProcessed: extracted.metadata.ocrProcessed,
+        ocrFailureReason: extracted.metadata.ocrFailureReason,
+        extractionWarnings: extracted.metadata.extractionWarnings
       }
     };
   }
@@ -199,6 +268,42 @@ function buildMetadataOnlyDocument(
     indexedMode: "PARTIAL_METADATA",
     metadata: {
       extension
+    }
+  };
+}
+
+async function buildPdfOcrFallbackDocument(
+  input: { filePath: string; fileName: string; relativePath: string; size: number },
+  extension: string,
+  pageCount?: number,
+  textExtractionFailure?: string
+): Promise<ExtractedDocument> {
+  const ocr = await runPdfOcr(input.filePath, input.size);
+  const warning = ocr.processed
+    ? undefined
+    : ocr.reason || "PDF contains no extractable text or may be scanned.";
+  const text = [
+    `PDF document asset: ${stripExtension(input.fileName)}`,
+    `File: ${input.fileName}`,
+    `Path: ${input.relativePath}`,
+    textExtractionFailure ? `PDF text extraction failed: ${textExtractionFailure}` : "",
+    ocr.text ? `OCR text: ${ocr.text}` : "",
+    warning ? `OCR note: ${warning}` : "",
+    "TODO: improve scanned PDF rendering and OCR coverage."
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return {
+    text,
+    indexedMode: ocr.processed ? "OCR_TEXT" : "PARTIAL_METADATA",
+    metadata: {
+      extension,
+      pageCount,
+      ocrAttempted: ocr.attempted,
+      ocrProcessed: ocr.processed,
+      ocrFailureReason: ocr.processed ? undefined : warning,
+      extractionWarnings: warning ? [warning] : undefined
     }
   };
 }

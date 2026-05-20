@@ -22,11 +22,15 @@ Use this checklist before sharing the MVP with colleagues.
 ## Local Document Indexing
 
 - Confirm the dashboard shows the absolute local folder path.
-- Add `.txt`, `.md`, `.json`, or `.csv` files and click **Refresh Documents**.
+- Add `.txt`, `.md`, `.json`, or `.csv` files and click **Scan / Update Document Index**.
+- Confirm **Document Index Details** shows indexed document count, chunk count, last indexed time, and a fresh index state.
+- Ask a question and confirm chat searches immediately without rescanning/OCR progress.
+- Add a new file and confirm the dashboard shows updates detected or a stale/empty index until indexing runs again.
 - Add a text-based PDF and confirm it appears under indexed files.
-- Add a scanned/image-only PDF and confirm it is skipped with a clear reason.
-- Add `.pptx` and `.xlsx` files and confirm they appear as fully indexed when text is extractable.
-- Add `.png`, `.mp4`, and `.url` files and confirm they appear as metadata indexed only.
+- Add a scanned/image-only PDF and confirm it is OCR indexed when OCR and local PDF rendering are available, or metadata-only with a clear OCR reason otherwise.
+- Add `.docx`, `.pptx`, and `.xlsx` files and confirm they appear as full text when text is extractable.
+- Add `.png`, `.jpg`, `.jpeg`, `.mp4`, and `.url` files and confirm images are OCR text or metadata-only, while videos/links are discoverable.
+- Add a PPTX or DOCX with embedded images and confirm the warning says embedded images were not OCR-indexed yet.
 - Add `video.mp4` plus `video.txt` or `video.vtt` and confirm the video appears as transcript linked.
 - Add files inside nested subfolders and confirm relative paths appear in indexed files and chat sources.
 
@@ -36,8 +40,8 @@ Use this checklist before sharing the MVP with colleagues.
 - Open `/settings/documents`.
 - Select **Synced SharePoint Folder**.
 - Enter the local synced folder path.
-- Save and refresh the index.
-- Confirm the dashboard shows **Active Source: Synced SharePoint Folder**.
+- Save and click **Scan / Update Index**.
+- Confirm the dashboard source pill and **Document Index Details** show **Synced SharePoint Folder**.
 
 ## Guardrails
 

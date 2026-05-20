@@ -208,26 +208,29 @@ export async function runCodexOperator(
   await fs.writeFile(promptFile, boundedPrompt, { mode: 0o600 });
   await fs.writeFile(outputFile, "", { mode: 0o600 });
 
+  const allowSearch = process.env.CODEX_ENABLE_SEARCH === "true";
   const searchArgs = buildCodexOperatorArgs(outputFile, true);
 
-  try {
-    const searchResult = await runTrackedCodexProcess(binaryPath, searchArgs, boundedPrompt, {
-      sessionId,
-      timeoutMs
-    });
+  if (allowSearch) {
+    try {
+      const searchResult = await runTrackedCodexProcess(binaryPath, searchArgs, boundedPrompt, {
+        sessionId,
+        timeoutMs
+      });
 
-    return {
-      sessionId,
-      promptFile,
-      outputFile,
-      output: await readOperatorOutput(outputFile, searchResult.stdout),
-      stdout: searchResult.stdout,
-      stderr: searchResult.stderr,
-      usedSearch: true
-    };
-  } catch (error) {
-    if (error instanceof CodexOperatorCancelledError) {
-      throw error;
+      return {
+        sessionId,
+        promptFile,
+        outputFile,
+        output: await readOperatorOutput(outputFile, searchResult.stdout),
+        stdout: searchResult.stdout,
+        stderr: searchResult.stderr,
+        usedSearch: true
+      };
+    } catch (error) {
+      if (error instanceof CodexOperatorCancelledError) {
+        throw error;
+      }
     }
   }
 

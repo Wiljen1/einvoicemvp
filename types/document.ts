@@ -21,6 +21,11 @@ export interface ApprovedDocument {
     height?: number;
     transcriptPath?: string;
     targetUrl?: string;
+    ocrAttempted?: boolean;
+    ocrProcessed?: boolean;
+    ocrFailureReason?: string;
+    extractionWarnings?: string[];
+    embeddedImageCount?: number;
   };
 }
 
@@ -49,6 +54,11 @@ export interface IndexedDocumentFile {
   lastModified: string;
   sourceType: ActiveDocumentSourceType;
   indexedMode: DocumentIndexedMode;
+  excludedFromChat: boolean;
+  excludedFromIndexing: boolean;
+  exclusionReason?: string | null;
+  excludedAt?: string | null;
+  excludedBy?: string | null;
   metadata: {
     size: number;
     lastModified: string;
@@ -60,7 +70,19 @@ export interface IndexedDocumentFile {
     height?: number;
     transcriptPath?: string;
     targetUrl?: string;
+    ocrAttempted?: boolean;
+    ocrProcessed?: boolean;
+    ocrFailureReason?: string;
+    extractionWarnings?: string[];
+    embeddedImageCount?: number;
   };
+}
+
+export interface OcrFailedFile {
+  fileName: string;
+  relativePath: string;
+  extension: string;
+  reason: string;
 }
 
 export interface SkippedDocumentFile {
@@ -85,11 +107,42 @@ export interface DocumentIndexStatus {
   indexedFiles: IndexedDocumentFile[];
   skippedFiles: SkippedDocumentFile[];
   fileCount: number;
+  activeFileCount: number;
+  chatExcludedFileCount: number;
+  indexExcludedFileCount: number;
   skippedFileCount: number;
+  failedFileCount: number;
   indexedCount: number;
   skippedCount: number;
+  ocrEnabled: boolean;
+  ocrProcessedCount: number;
+  ocrFailedFiles: OcrFailedFile[];
+  startupValidation: StartupValidationStatus;
   lastIndexedAt: string;
   message: string;
+}
+
+export interface StartupValidationStatus {
+  database: {
+    connected: boolean;
+    message: string;
+  };
+  ocrService: {
+    loaded: boolean;
+    enabled: boolean;
+    message: string;
+  };
+  activeSource: {
+    available: boolean;
+    type: DocumentSourceType;
+    rootPath: string;
+    message: string;
+  };
+  extractors: {
+    registered: string[];
+    supportedExtensions: string[];
+  };
+  warnings: string[];
 }
 
 export interface DocumentIndex extends DocumentIndexStatus {
@@ -119,4 +172,4 @@ export interface SourceReference {
   pageCount?: number;
 }
 
-export type DocumentIndexedMode = "FULL_TEXT" | "PARTIAL_METADATA" | "TRANSCRIPT_LINKED";
+export type DocumentIndexedMode = "FULL_TEXT" | "OCR_TEXT" | "PARTIAL_METADATA" | "TRANSCRIPT_LINKED";

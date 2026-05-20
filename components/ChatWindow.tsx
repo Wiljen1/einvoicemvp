@@ -132,7 +132,8 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
           confidence: status.confidence,
           sources: status.sources,
           engine: status.engine || "codex",
-          fromCache: status.fromCache
+          fromCache: status.fromCache,
+          warning: status.warning
         };
         const assistantMessage: Message = {
           id: `assistant-${idCounter.current++}`,
@@ -221,6 +222,9 @@ export function ChatWindow({ onProcessingStatusChange }: ChatWindowProps) {
                         : "Codex placeholder"}
                   </span>
                 </div>
+                {message.result.warning ? (
+                  <div className="notice warning">{message.result.warning}</div>
+                ) : null}
                 <SourceList sources={message.result.sources} />
               </>
             ) : null}

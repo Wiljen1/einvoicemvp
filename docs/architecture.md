@@ -6,7 +6,7 @@ This is a single Next.js app with server-side API routes and local services.
 
 - `app` contains pages and API routes.
 - `components` contains React UI components.
-- `services` contains Codex, guardrails, prompt, document source, extractor, index, and search logic.
+- `services` contains Codex, guardrails, prompt, document source, extractor, SQLite index, and search logic.
 - `types` contains shared TypeScript types.
 - `config` contains guardrails and ignored runtime document-source config.
 - `documents` is the default approved local folder for MVP development.
@@ -44,10 +44,32 @@ Future disabled mode:
 Indexed files expose one of:
 
 - `FULL_TEXT`
+- `OCR_TEXT`
 - `PARTIAL_METADATA`
 - `TRANSCRIPT_LINKED`
 
-Text-based files, PDFs, PPTX slide text, and XLSX cell text are indexed as full text when extraction succeeds. PNG, MP4 without transcript, URL shortcuts, and oversized files are metadata-indexed so business assets remain discoverable.
+Text-based files, PDFs, DOCX text, PPTX slide text, and XLSX cell text are indexed as full text when extraction succeeds. PNG/JPG/JPEG and scanned PDFs can be indexed as OCR text through local `tesseract.js`. MP4 without transcript, URL shortcuts, and oversized files are metadata-indexed so business assets remain discoverable.
+
+Semantic embeddings are intentionally represented only by the disabled `EmbeddingService` interface. The current MVP continues to use keyword/chunk search.
+
+## Persistent Index
+
+Documents are indexed into local SQLite before chat:
+
+- `DocumentSource` stores source type and root path.
+- `IndexedDocument` stores file path, checksum, modified time, extraction status, mode, metadata, and indexed time.
+- `DocumentChunk` stores searchable text chunks.
+- `IndexRun` stores scan/update progress and history.
+
+`POST /api/index/run` scans the active source, extracts/OCRs only new or changed files, replaces chunks for changed files, and marks deleted files missing. Chat searches `DocumentChunk` rows and does not rescan folders or run OCR during a question.
+
+Index endpoints:
+
+- `GET /api/index/status`
+- `POST /api/index/run`
+- `GET /api/index/run/:runId`
+- `POST /api/index/run/:runId/cancel`
+- `GET /api/index/documents`
 
 ## Chat Session Endpoints
 

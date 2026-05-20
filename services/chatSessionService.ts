@@ -7,15 +7,18 @@ import {
   executeCodexPrompt,
   stopCurrentCodexOperator
 } from "./codexService";
-import { estimateOverallConfidence, searchDocuments } from "./documentSearchService";
 import { fallbackMessage, loadGuardrails } from "./guardrailsService";
-import { getDocumentSourceStatus, listApprovedDocuments } from "./documentSourceService";
+import { getActiveIndexStatus } from "./documentIndexRunService";
+import {
+  estimateIndexedOverallConfidence,
+  searchIndexedDocuments
+} from "./indexedDocumentSearchService";
 import type { ChatAnswer, ChatSessionStatus } from "@/types/chat";
 
 const sessions = getSessionStore();
 const TERMINAL_STATUSES = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
 const noReadableDocumentsMessage =
-  "No readable documents are currently indexed. Please add documents or refresh the document index.";
+  "No documents are indexed yet. Please run Scan / Update Document Index first.";
 
 interface InternalChatSession extends ChatSessionStatus {
   question: string;
@@ -74,6 +77,7 @@ export function cancelChatSession(sessionId: string): ChatSessionStatus | null {
 }
 
 async function runChatPipeline(session: InternalChatSession): Promise<void> {
+  const startedAt = Date.now();
   try {
     updateSession(session, 8, "Checking Codex");
     const codex = await checkCodexStatus();
@@ -83,26 +87,11 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
       throw new Error(codex.setupInstructions || "Codex is not available.");
     }
 
-    updateSession(session, 20, "Checking active document source");
-    const documentsStatus = await getDocumentSourceStatus();
+    updateSession(session, 20, "Checking document index");
+    const indexStatus = await getActiveIndexStatus({ checkForUpdates: false });
     ensureNotCancelled(session);
 
-    if (!documentsStatus.available) {
-      throw new Error(documentsStatus.message || "No document source is currently available.");
-    }
-
-    updateSession(session, 32, "Loading guardrails");
-    const guardrails = await loadGuardrails();
-    ensureNotCancelled(session);
-
-    updateSession(session, 45, "Searching documents");
-    let documents = await listApprovedDocuments();
-    if (documents.length === 0) {
-      documents = await listApprovedDocuments({ forceRefresh: true });
-    }
-    ensureNotCancelled(session);
-
-    if (documents.length === 0) {
+    if (indexStatus.index.activeDocuments === 0 || indexStatus.index.activeChunks === 0) {
       completeSession(session, {
         answer: noReadableDocumentsMessage,
         confidence: 0,
@@ -112,7 +101,15 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
       return;
     }
 
-    const contextChunks = searchDocuments(session.question, documents, { limit: 5 });
+    updateSession(session, 32, "Loading guardrails");
+    const guardrails = await loadGuardrails();
+    ensureNotCancelled(session);
+
+    updateSession(session, 45, "Searching indexed documents");
+    const contextChunks = await searchIndexedDocuments(session.question, { limit: 5 });
+    console.info(
+      `[chat:${session.sessionId}] search completed chunks=${contextChunks.length} elapsedMs=${Date.now() - startedAt}`
+    );
     ensureNotCancelled(session);
 
     if (contextChunks.length === 0) {
@@ -130,7 +127,11 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
       question: session.question,
       guardrails,
       contextChunks,
-      folderIdentifier: documentsStatus.folderUrl || documentsStatus.folderPath
+      folderIdentifier: [
+        indexStatus.source.type,
+        indexStatus.source.rootPath,
+        indexStatus.index.lastIndexedAt || "not-indexed"
+      ].join(":")
     });
     const cachedAnswer = await getCachedChatAnswer(cacheKey);
     ensureNotCancelled(session);
@@ -147,6 +148,7 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
     });
 
     updateSession(session, 72, "Running local Codex");
+    console.info(`[chat:${session.sessionId}] codex started chunks=${contextChunks.length}`);
     const codexResult = await executeCodexPrompt({
       prompt,
       question: session.question,
@@ -154,10 +156,13 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
       guardrails,
       sessionId: session.sessionId
     });
+    console.info(
+      `[chat:${session.sessionId}] codex completed engine=${codexResult.engine} elapsedMs=${Date.now() - startedAt}`
+    );
     ensureNotCancelled(session);
 
     updateSession(session, 90, "Reading response");
-    const confidence = estimateOverallConfidence(contextChunks);
+    const confidence = estimateIndexedOverallConfidence(contextChunks);
     const sources = contextChunks.map((chunk) => ({
       fileName: chunk.relativePath || chunk.fileName,
       relativePath: chunk.relativePath,
@@ -170,7 +175,8 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
       confidence,
       sources,
       engine: codexResult.engine,
-      fromCache: false
+      fromCache: false,
+      warning: buildIndexWarning(indexStatus.index.status, indexStatus.index.lastIndexedAt)
     };
 
     await saveCachedChatAnswer(cacheKey, answer);
@@ -209,6 +215,7 @@ function completeSession(
   session.error = null;
   session.engine = answer.engine;
   session.fromCache = answer.fromCache;
+  session.warning = answer.warning;
   session.updatedAt = Date.now();
 }
 
@@ -248,7 +255,8 @@ function toPublicStatus(session: InternalChatSession): ChatSessionStatus {
     sources: session.sources,
     error: session.error,
     engine: session.engine,
-    fromCache: session.fromCache
+    fromCache: session.fromCache,
+    warning: session.warning
   };
 }
 
@@ -258,4 +266,12 @@ function getSessionStore(): Map<string, InternalChatSession> {
   }
 
   return globalThis.__eInvoiceChatSessions;
+}
+
+function buildIndexWarning(status: "FRESH" | "STALE" | "EMPTY", lastIndexedAt: string | null): string | undefined {
+  if (status !== "STALE") {
+    return undefined;
+  }
+
+  return `The document index may be outdated. Last indexed: ${lastIndexedAt || "not indexed yet"}.`;
 }

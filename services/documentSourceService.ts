@@ -2,33 +2,65 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { resolveInside, uploadedDocumentsDirectory } from "@/lib/paths";
 import type { ApprovedDocument, DocumentIndexStatus } from "@/types/document";
-import {
-  getLocalApprovedDocuments,
-  getLocalDocumentIndexStatus,
-  getSupportedLocalDocumentExtensions,
-  refreshLocalDocumentIndex
-} from "./documentIndexService";
+import { getSupportedExtractorExtensions } from "./documentExtractors";
+import { getDocumentIndexStatus, startIndexRun } from "./documentIndexRunService";
+import { ensureActiveDocumentSource } from "./documentIndexRunService";
+import { listSearchableChunks } from "./indexDatabaseService";
 
 export async function getDocumentSourceStatus(): Promise<DocumentIndexStatus> {
-  return getLocalDocumentIndexStatus({ force: true });
+  return getDocumentIndexStatus();
 }
 
-export async function listApprovedDocuments(options?: {
-  forceRefresh?: boolean;
-}): Promise<ApprovedDocument[]> {
-  return getLocalApprovedDocuments({ force: options?.forceRefresh ?? true });
+export async function listApprovedDocuments(): Promise<ApprovedDocument[]> {
+  const source = await ensureActiveDocumentSource();
+  const byDocument = new Map<string, ApprovedDocument>();
+
+  for (const chunk of listSearchableChunks(source.id)) {
+    const current = byDocument.get(chunk.documentId);
+    const metadata = parseMetadata(chunk.metadataJson);
+
+    if (current) {
+      current.content = `${current.content}\n${chunk.text}`;
+      current.searchableText = current.content;
+    } else {
+      byDocument.set(chunk.documentId, {
+        id: chunk.documentId,
+        fileName: chunk.fileName,
+        relativePath: chunk.relativePath,
+        absolutePath: chunk.absolutePath,
+        extension: chunk.extension,
+        content: chunk.text,
+        searchableText: chunk.text,
+        sourcePath: chunk.absolutePath,
+        sourceType: source.type,
+        indexedMode: chunk.indexedMode,
+        metadata
+      });
+    }
+  }
+
+  return Array.from(byDocument.values());
 }
 
-export async function refreshDocumentSourceIndex(): Promise<DocumentIndexStatus> {
-  const index = await refreshLocalDocumentIndex();
-  const { documents, ...status } = index;
-  void documents;
-  return status;
+function parseMetadata(value: string | null): ApprovedDocument["metadata"] {
+  if (!value) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(value) as ApprovedDocument["metadata"];
+  } catch {
+    return {};
+  }
+}
+
+export async function refreshDocumentSourceIndex() {
+  return startIndexRun();
 }
 
 export async function saveUploadedDocument(file: File): Promise<void> {
   const extension = path.extname(file.name).toLowerCase();
-  const supported = getSupportedLocalDocumentExtensions();
+  const supported = getSupportedExtractorExtensions();
 
   if (!supported.includes(extension)) {
     throw new Error(`Unsupported file type (${extension || "unknown"}).`);

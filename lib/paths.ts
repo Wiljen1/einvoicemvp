@@ -28,6 +28,12 @@ export const uploadedDocumentsDirectory = path.join(projectRoot, "uploaded-docum
 export const artifactsDirectory = path.join(projectRoot, "artifacts");
 export const codexOperatorsDirectory = path.join(artifactsDirectory, "codex-operators");
 export const cacheDirectory = path.join(artifactsDirectory, "cache");
+export const dataDirectory = path.join(projectRoot, "data");
+export const indexDatabasePath = getIndexDatabasePath();
+
+export function getIndexDatabasePath(): string {
+  return process.env.INDEX_DATABASE_PATH || path.join(dataDirectory, "einvoice-index.sqlite");
+}
 
 export function resolveInside(baseDirectory: string, requestedPath: string): string {
   const resolvedBase = path.resolve(baseDirectory);

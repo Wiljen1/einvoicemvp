@@ -6,6 +6,13 @@
 - Added text-based PDF extraction for local documents.
 - Added PPTX, XLSX, PNG, MP4, and URL shortcut indexing.
 - Added extraction modes for full text, metadata-only, and transcript-linked assets.
+- Added optional local OCR for images and scanned PDF fallback paths.
+- Added DOCX text extraction and embedded Office image warnings.
+- Added disabled embedding service placeholder for future semantic search.
+- Added persistent SQLite document indexing so extraction and OCR run during index updates, not during chat.
+- Added index run APIs, progress polling, change detection, stale-index status, and duplicate prevention.
+- Updated chat to search saved database chunks only.
+- Reworked dashboard status into compact pills with collapsible document index details.
 - Added large-file metadata indexing instead of aggressive skipping.
 - Added document status and refresh endpoints for local reindexing without restart.
 - Updated chat search and sources to use relative paths for nested files.

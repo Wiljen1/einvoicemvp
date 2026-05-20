@@ -13,6 +13,8 @@ export interface PptxExtractionResult {
   text: string;
   metadata: {
     slideCount?: number;
+    embeddedImageCount?: number;
+    extractionWarnings?: string[];
   };
   partial: boolean;
 }
@@ -34,6 +36,9 @@ export async function extractPptxText(input: PptxExtractionInput): Promise<PptxE
     const noteFiles = sortOfficeXmlFiles(
       Object.keys(zip.files).filter((name) => /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(name))
     );
+    const embeddedImageCount = Object.keys(zip.files).filter(
+      (name) => /^ppt\/media\//.test(name) && !zip.files[name].dir
+    ).length;
     const sections: string[] = [];
 
     for (const [index, fileName] of slideFiles.entries()) {
@@ -54,30 +59,39 @@ export async function extractPptxText(input: PptxExtractionInput): Promise<PptxE
       }
     }
 
+    const warnings = embeddedImageCount > 0 ? ["Embedded images were not OCR-indexed yet."] : [];
+
     return {
-      text: sections.length ? sections.join("\n") : buildPresentationAssetText(input),
+      text: sections.length
+        ? [...sections, ...warnings].join("\n")
+        : buildPresentationAssetText(input, embeddedImageCount),
       metadata: {
-        slideCount: slideFiles.length || undefined
+        slideCount: slideFiles.length || undefined,
+        embeddedImageCount,
+        extractionWarnings: warnings.length ? warnings : undefined
       },
       partial: sections.length === 0
     };
   } catch {
     return {
-      text: buildPresentationAssetText(input),
+      text: buildPresentationAssetText(input, 0),
       metadata: {},
       partial: true
     };
   }
 }
 
-function buildPresentationAssetText(input: PptxExtractionInput): string {
+function buildPresentationAssetText(input: PptxExtractionInput, embeddedImageCount = 0): string {
   return [
     `Presentation asset: ${stripExtension(input.fileName)}`,
     `File: ${input.fileName}`,
     `Path: ${input.relativePath}`,
     `Folder: ${path.dirname(input.relativePath) === "." ? "Root" : path.dirname(input.relativePath)}`,
-    "TODO: add slide image extraction for visual-only presentations."
-  ].join("\n");
+    embeddedImageCount > 0 ? "Embedded images were not OCR-indexed yet." : "",
+    "TODO: add embedded slide image OCR for visual-only presentations."
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function sortOfficeXmlFiles(files: string[]): string[] {

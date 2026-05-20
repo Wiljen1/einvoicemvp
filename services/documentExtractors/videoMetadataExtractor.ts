@@ -1,0 +1,1 @@
+export { extractVideoMetadata } from "./videoExtractor";

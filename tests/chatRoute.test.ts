@@ -6,6 +6,8 @@ import { POST } from "@/app/api/chat/route";
 import { POST as START } from "@/app/api/chat/start/route";
 import { GET as STATUS } from "@/app/api/chat/status/[sessionId]/route";
 import { resetDocumentIndexForTests } from "@/services/documentIndexService";
+import { getActiveIndexStatus, getIndexRunProgress, startIndexRun } from "@/services/documentIndexRunService";
+import { listDocumentsBySource } from "@/services/indexDatabaseService";
 
 const originalEnv = { ...process.env };
 
@@ -18,13 +20,15 @@ describe("chat API", () => {
     process.env.DOCUMENT_SOURCE_DISABLE_LOCAL_CONFIG = "true";
     process.env.DOCUMENT_SOURCE_MODE = "LOCAL_FOLDER";
     process.env.LOCAL_DOCUMENTS_PATH = tempDocumentsPath;
+    process.env.INDEX_DATABASE_PATH = `${tempDocumentsPath}.sqlite`;
     resetDocumentIndexForTests();
   });
 
   afterEach(async () => {
-    process.env = { ...originalEnv };
     resetDocumentIndexForTests();
+    process.env = { ...originalEnv };
     await fs.rm(tempDocumentsPath, { recursive: true, force: true });
+    await fs.rm(`${tempDocumentsPath}.sqlite`, { force: true });
   });
 
   it("fails gracefully when Codex is unavailable", async () => {
@@ -51,6 +55,7 @@ describe("chat API", () => {
       path.join(tempDocumentsPath, "approved.md"),
       "Approved e-invoice documents require source references."
     );
+    await runIndexToCompletion();
 
     const response = await POST(
       new Request("http://localhost/api/chat", {
@@ -82,7 +87,7 @@ describe("chat API", () => {
 
     expect(response.status).toBe(200);
     expect(payload.ok).toBe(true);
-    expect(payload.data.answer).toContain("No readable documents are currently indexed");
+    expect(payload.data.answer).toContain("No documents are indexed yet");
     expect(payload.data.confidence).toBe(0);
     expect(payload.data.sources).toEqual([]);
   });
@@ -99,6 +104,7 @@ describe("chat API", () => {
       path.join(syncedPath, "synced-policy.md"),
       "The synced alpha policy requires operational review."
     );
+    await runIndexToCompletion();
 
     const response = await POST(
       new Request("http://localhost/api/chat", {
@@ -124,6 +130,7 @@ describe("chat API", () => {
       path.join(tempDocumentsPath, "new-policy.md"),
       "The local alpha policy requires source references for every answer."
     );
+    await runIndexToCompletion();
 
     const response = await POST(
       new Request("http://localhost/api/chat", {
@@ -139,6 +146,37 @@ describe("chat API", () => {
     expect(payload.data.sources[0].fileName).toBe("new-policy.md");
   });
 
+  it("does not trigger indexing during chat when a new file appears after indexing", async () => {
+    process.env.CODEX_FORCE_UNAVAILABLE = "false";
+    process.env.CODEX_BIN = "node";
+    process.env.CODEX_EXECUTION_MODE = "placeholder";
+
+    await fs.writeFile(
+      path.join(tempDocumentsPath, "indexed.md"),
+      "The indexed policy says sources must be approved."
+    );
+    await runIndexToCompletion();
+    const statusBeforeChat = await getActiveIndexStatus({ checkForUpdates: false });
+    await fs.writeFile(
+      path.join(tempDocumentsPath, "unindexed.md"),
+      "The unindexed policy mentions emergency onboarding."
+    );
+
+    const response = await POST(
+      new Request("http://localhost/api/chat", {
+        method: "POST",
+        body: JSON.stringify({ question: "What mentions emergency onboarding?" })
+      })
+    );
+    const payload = await response.json();
+    const documentsAfterChat = listDocumentsBySource(statusBeforeChat.source.id);
+
+    expect(response.status).toBe(200);
+    expect(payload.ok).toBe(true);
+    expect(payload.data.sources).toEqual([]);
+    expect(documentsAfterChat.map((document) => document.relativePath)).toEqual(["indexed.md"]);
+  });
+
   it("starts a progress session and completes a no-context refusal", async () => {
     process.env.CODEX_FORCE_UNAVAILABLE = "false";
     process.env.CODEX_BIN = "node";
@@ -147,6 +185,7 @@ describe("chat API", () => {
       path.join(tempDocumentsPath, "approved.md"),
       "Approved e-invoice documents require source references."
     );
+    await runIndexToCompletion();
 
     const startResponse = await START(
       new Request("http://localhost/api/chat/start", {
@@ -182,4 +221,21 @@ async function waitForSession(sessionId: string) {
   }
 
   throw new Error("Session did not finish.");
+}
+
+async function runIndexToCompletion() {
+  const run = await startIndexRun();
+
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const current = getIndexRunProgress(run.id);
+
+    if (current && current.status !== "QUEUED" && current.status !== "RUNNING") {
+      expect(current.status).toBe("COMPLETED");
+      return current;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 15));
+  }
+
+  throw new Error("Index run did not finish.");
 }
