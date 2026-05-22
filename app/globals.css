@@ -797,6 +797,37 @@ a {
   font-size: 0.86rem;
 }
 
+.thread-source-evidence {
+  color: var(--text) !important;
+  font-weight: 700;
+}
+
+.source-quality {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 6px;
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.source-quality.high {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.source-quality.medium {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.source-quality.low {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
 .thread-metadata {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

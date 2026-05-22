@@ -89,6 +89,7 @@ export interface SearchableChunkRecord extends DocumentChunkRecord {
   relativePath: string;
   absolutePath: string;
   extension: string;
+  extractionMode: ExtractionMode;
   metadataJson: string | null;
   indexedMode: DocumentIndexedMode;
   excludedFromChat: number;
@@ -569,6 +570,7 @@ export function listSearchableChunks(sourceId: string): SearchableChunkRecord[] 
         d.relativePath,
         d.absolutePath,
         d.extension,
+        d.extractionMode,
         d.metadataJson,
         d.indexedMode,
         d.excludedFromChat,

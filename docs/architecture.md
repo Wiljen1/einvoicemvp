@@ -1,5 +1,13 @@
 # Architecture
 
+## Current Direction
+
+The target architecture is now APEX-first. Oracle APEX and Autonomous Database should own backend data, admin UI, analytics, governance, configuration, reporting, audit logs, and ORDS APIs. Custom Node services should be limited to Slack runtime duties and Codex runner orchestration.
+
+See `docs/apex-first-architecture.md` for the corrected target architecture.
+
+The Next.js/local SQLite architecture below is a legacy local MVP/prototype shape. Do not expand it into a duplicate admin/governance platform.
+
 ## Shape
 
 This is a single Next.js app with server-side API routes and local services.
@@ -11,6 +19,23 @@ This is a single Next.js app with server-side API routes and local services.
 - `config` contains guardrails and ignored runtime document-source config.
 - `documents` is the default approved local folder for MVP development.
 - `uploaded-documents` stores manual-upload files locally and is ignored by Git.
+- `local_api` contains a standalone Node.js middleware for Oracle APEX admin screens.
+
+## Oracle APEX Middleware
+
+APEX integrates through the local Node.js service in `local_api/` instead of calling Codex directly.
+
+The middleware provides:
+
+- `GET /api/status`
+- `POST /api/index`
+- `GET /api/files`
+- `POST /api/search`
+- `POST /api/ask`
+
+It scans a configured local folder, stores file metadata and extracted text in a separate SQLite database, searches indexed content, retrieves relevant snippets for questions, and bridges to local Codex or an explicitly configured OpenAI-compatible endpoint. If Codex is unavailable and the provider is `auto`, it can return a local extractive answer so validation remains fully local.
+
+The APEX middleware intentionally does not require SharePoint or OCI. The REST boundary is kept narrow so the same APEX REST Data Source can later point to an OCI-hosted version of the service.
 
 ## Chat Flow
 

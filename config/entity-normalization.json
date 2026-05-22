@@ -1,0 +1,33 @@
+{
+  "countryAliases": {
+    "Belgium": "Belgium",
+    "Brasil": "Brazil",
+    "Brazil": "Brazil",
+    "Chile": "Chile",
+    "China": "China",
+    "Colombia": "Colombia",
+    "Denmark": "Denmark",
+    "Israel": "Israel",
+    "Malaysia": "Malaysia",
+    "Spain": "Spain",
+    "U.S.": "United States",
+    "US": "United States",
+    "USA": "United States",
+    "United States": "United States"
+  },
+  "knownQualifiers": [
+    "PEPPOL",
+    "VeriFactu",
+    "DBNA",
+    "Nemhandel",
+    "OBN",
+    "Avalara"
+  ],
+  "ignoredLabels": [
+    "NetSuite",
+    "Localization",
+    "Localisation",
+    "SuiteApp",
+    "SuiteApps"
+  ]
+}

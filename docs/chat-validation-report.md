@@ -7,7 +7,7 @@ Validation artifact: `artifacts/validation/updated-chat-validation-1779299373386
 ## Active Source
 
 - Source type: `SYNCED_SHAREPOINT_FOLDER`
-- Source path: `/Users/wiljan.h/Library/CloudStorage/OneDrive-OracleCorporation/NetSuite Go-to-Market - Electronic Invoicing`
+- Source path: `<local OneDrive-synced E-Invoice folder>`
 - Source id: `b1b1c32c-52e2-4b23-9114-8c58dec2022c`
 - Index status: `FRESH`
 - Last indexed: `2026-05-20T16:50:23.174Z`
@@ -67,7 +67,15 @@ Result: **PASS**. Spreadsheet and video files remain visible in the index but we
 
 During validation, the country-support answer correctly avoided spreadsheet/video sources, but the first run still phrased solution labels such as `US DBNA` and `Denmark PEPPOL` as if they were country names.
 
-Fix applied: prompt quality rules now instruct Codex to separate actual countries, regions, and locations from product names, provider labels, mandates, file names, sheet names, and media titles.
+Fixes applied:
+
+- Added `config/entity-normalization.json`.
+- Added a lightweight entity normalization service for country aliases and qualifiers.
+- Search now tags retrieved chunks with source quality (`HIGH`, `MEDIUM`, `LOW`).
+- Search removes duplicate chunks, merges adjacent chunks from the same document, and avoids LOW-quality metadata sources when stronger evidence exists.
+- Prompt context now includes document name, relative path, extension, extraction mode, source quality, page/slide/sheet metadata, relevance score, and evidence notes.
+- Country/support prompts now include normalization notes such as `Spain - qualifier/source label: VeriFactu`.
+- Prompt quality rules now instruct Codex to separate actual countries, regions, and locations from product names, provider labels, mandates, file names, sheet names, and media titles.
 
 Targeted rerun result:
 
@@ -76,7 +84,28 @@ Targeted rerun result:
 - Codex used: yes
 - Sources returned: 5
 - Spreadsheet/video sources returned: 0
-- Result: returned clean names such as `Spain`, `US`, and `Denmark`, with `Veri*Factu`, `DBNA`, and `PEPPOL` kept as supporting labels.
+- Result: returned clean names such as `Spain`, `United States`, and `Denmark`, with `VeriFactu`, `DBNA`, and `PEPPOL` kept as supporting labels.
+
+## Entity Normalization Validation
+
+Additional validation on 2026-05-20 confirmed the country/support flow now normalizes common combined labels:
+
+| Question | Result |
+| --- | --- |
+| `Which countries are supported for e-invoicing?` | Returned `Spain - VeriFactu`, `United States - DBNA`, and `Denmark - PEPPOL`; no combined country labels remained. |
+| `What countries are listed under the NetSuite / OBN / Avalara model?` | Returned clean country names grouped under the model and separated qualifiers. |
+| `Is Spain supported for e-invoicing?` | Returned Spain as the country and VeriFactu as the qualifier. |
+| `Is Denmark supported and what framework is mentioned?` | Returned Denmark with PEPPOL and Nemhandel as separate framework labels. |
+| `Is the United States listed, and what does DBNA refer to in the source label?` | Returned United States as the country and explained DBNA as Digital Business Network Alliance. |
+| `Are there any truncated or unclear country entries?` | Identified `Ger` as truncated/unclear and did not guess the missing country. |
+
+Validation checks:
+
+- No final answer listed `Spain VeriFactu`, `US DBNA`, or `Denmark PEPPOL` as a country.
+- Truncated values were not completed from general knowledge.
+- Chat did not trigger indexing or OCR.
+- All validation answers were logged.
+- Returned source references include human-readable evidence notes and source quality labels.
 
 ## UI Validation
 
@@ -106,7 +135,7 @@ All passed after the fixes:
 
 - `npm run lint`
 - `npm run typecheck`
-- `npm run test` (13 files, 80 tests)
+- `npm run test` (16 files, 89 tests)
 - `npm run build`
 
 ## Known Limitations

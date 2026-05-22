@@ -1,0 +1,51 @@
+{
+  "page": {
+    "name": "Local Codex Index Admin",
+    "suggestedPageNumber": 1,
+    "authorization": "Admin Only",
+    "baseUrlLocal": "http://127.0.0.1:8010",
+    "baseUrlDocker": "http://host.docker.internal:8010"
+  },
+  "items": [
+    { "name": "P1_API_BASE_URL", "type": "Text Field", "default": "http://127.0.0.1:8010" },
+    { "name": "P1_ADMIN_TOKEN", "type": "Password", "required": false },
+    { "name": "P1_STATUS_SUMMARY", "type": "Display Only" },
+    { "name": "P1_STATUS_JSON", "type": "Textarea" },
+    { "name": "P1_INDEX_RESULT", "type": "Textarea" },
+    { "name": "P1_SEARCH", "type": "Text Field" },
+    { "name": "P1_SEARCH_JSON", "type": "Textarea" },
+    { "name": "P1_QUESTION", "type": "Textarea" },
+    { "name": "P1_RESPONSE", "type": "Textarea" },
+    { "name": "P1_ERROR", "type": "Textarea" }
+  ],
+  "buttons": [
+    { "name": "STATUS", "label": "Status", "action": "Submit Page" },
+    { "name": "RUN_INDEX", "label": "Run Index", "action": "Submit Page" },
+    { "name": "SEARCH", "label": "Search", "action": "Submit Page" },
+    { "name": "ASK", "label": "Ask", "action": "Submit Page" }
+  ],
+  "regions": [
+    { "name": "Settings", "type": "Static Content", "items": ["P1_API_BASE_URL", "P1_ADMIN_TOKEN"] },
+    { "name": "Status", "type": "Static Content", "items": ["P1_STATUS_SUMMARY", "P1_STATUS_JSON"] },
+    { "name": "API Status", "type": "Classic Report", "collection": "LOCAL_CODEX_STATUS" },
+    { "name": "Index", "type": "Static Content", "items": ["P1_INDEX_RESULT"] },
+    { "name": "Indexed Files", "type": "Interactive Report", "collection": "LOCAL_CODEX_FILES" },
+    { "name": "Search", "type": "Static Content", "items": ["P1_SEARCH", "P1_SEARCH_JSON"] },
+    { "name": "Search Results", "type": "Interactive Report", "collection": "LOCAL_CODEX_SEARCH_RESULTS" },
+    { "name": "Ask", "type": "Static Content", "items": ["P1_QUESTION", "P1_RESPONSE"] },
+    { "name": "Errors", "type": "Static Content", "items": ["P1_ERROR"] }
+  ],
+  "processes": [
+    { "name": "GET_STATUS", "endpoint": "GET /api/status", "point": "Before Header or After Submit", "condition": "Always or button STATUS" },
+    { "name": "GET_FILES", "endpoint": "GET /api/files", "point": "Before Header or After Submit", "condition": "Always or after RUN_INDEX" },
+    { "name": "RUN_INDEX", "endpoint": "POST /api/index", "point": "Processing", "condition": "Button RUN_INDEX" },
+    { "name": "RUN_SEARCH", "endpoint": "POST /api/search", "point": "Processing", "condition": "Button SEARCH" },
+    { "name": "RUN_ASK", "endpoint": "POST /api/ask", "point": "Processing", "condition": "Button ASK" }
+  ],
+  "dynamicActions": [
+    { "name": "CLEAR_ERROR_ON_SEARCH", "event": "Change", "selection": "P1_SEARCH", "action": "Set P1_ERROR to null" },
+    { "name": "CLEAR_ERROR_ON_QUESTION", "event": "Change", "selection": "P1_QUESTION", "action": "Set P1_ERROR to null" },
+    { "name": "CLEAR_ERROR_ON_BASE_URL", "event": "Change", "selection": "P1_API_BASE_URL", "action": "Set P1_ERROR to null" }
+  ]
+}
+

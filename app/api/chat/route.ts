@@ -13,10 +13,15 @@ import { evaluateChatQuestionSafety } from "@/services/chatSafetyService";
 import { detectCodexStatus, executeCodexPrompt } from "@/services/codexService";
 import { getActiveIndexStatus } from "@/services/documentIndexRunService";
 import {
+  isCountrySupportQuestion,
+  normalizeCombinedCountryLabelsInText
+} from "@/services/entityNormalizationService";
+import {
   estimateIndexedOverallConfidence,
   searchIndexedDocuments
 } from "@/services/indexedDocumentSearchService";
 import { fallbackMessage, loadGuardrails } from "@/services/guardrailsService";
+import { buildSourceReferences } from "@/services/sourceReferenceService";
 import type { ChatAnswer } from "@/types/chat";
 
 export const runtime = "nodejs";
@@ -193,15 +198,15 @@ export async function POST(request: Request) {
     `[chat] codex completed engine=${codexResult.engine} elapsedMs=${Date.now() - startedAt}`
   );
   const confidence = estimateIndexedOverallConfidence(contextChunks);
-  const sources = contextChunks.map((chunk) => ({
-    fileName: chunk.relativePath || chunk.fileName,
-    relativePath: chunk.relativePath,
-    snippet: chunk.snippet,
-    webUrl: chunk.webUrl,
-    pageCount: chunk.metadata?.pageCount
-  }));
+  const shouldNormalizeCountryLabels = isCountrySupportQuestion(question);
+  const sources = buildSourceReferences(contextChunks, {
+    normalizeCountryLabels: shouldNormalizeCountryLabels
+  });
+  const normalizedAnswer = shouldNormalizeCountryLabels
+    ? normalizeCombinedCountryLabelsInText(codexResult.answer)
+    : codexResult.answer;
   const data: ChatAnswer = {
-    answer: codexResult.answer,
+    answer: normalizedAnswer,
     confidence,
     sources,
     engine: codexResult.engine,

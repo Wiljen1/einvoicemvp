@@ -1,0 +1,26 @@
+{
+  "workspace": "EMEAWJ",
+  "schema": "WKSP_EMEAWJ",
+  "localWorkspace": "LOCAL_CODEX",
+  "localSchema": "LOCAL_CODEX",
+  "applicationId": 56594,
+  "applicationName": "EMEAChatbot",
+  "apexBaseUrl": "https://apex.oraclecorp.com/pls/apex",
+  "localApexBaseUrl": "http://127.0.0.1:8181/ords",
+  "localApplicationUrl": "http://127.0.0.1:8181/ords/r/local_codex/emeachatbot/dashboard",
+  "restSqlUrl": "https://apex.oraclecorp.com/pls/apex/emeawj/_/sql",
+  "localOrdsApiBaseUrl": "http://127.0.0.1:8181/ords/local_codex/api",
+  "restSqlSchemaAlias": "emeawj",
+  "chromeDebugUrl": "http://127.0.0.1:9222",
+  "sourceDirectory": "apex/apps/f56594",
+  "schemaDirectory": "apex/schema",
+  "ordsDirectory": "apex/ords",
+  "packageOutput": "apex/build/f56594-apexlang.zip",
+  "notes": [
+    "Uses the already-authenticated Chrome SSO session for browser-backed APEX Builder operations.",
+    "No Oracle credentials or SSO tokens are stored in this file.",
+    "REST Enabled SQL is enabled for WKSP_EMEAWJ with auto REST auth.",
+    "No-browser SQL requires approved REST SQL credentials.",
+    "No-browser APEX app import/export requires an approved direct SQLcl database connection."
+  ]
+}

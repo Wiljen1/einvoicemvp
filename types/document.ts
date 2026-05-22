@@ -154,11 +154,18 @@ export interface DocumentChunk {
   documentId?: string;
   fileName: string;
   relativePath?: string;
+  extension?: string;
+  indexedMode?: DocumentIndexedMode;
+  pageNumber?: number | null;
+  slideNumber?: number | null;
+  sheetName?: string | null;
   metadata?: ApprovedDocument["metadata"];
   snippet: string;
   sourcePath: string;
   webUrl?: string;
   chunkIndex: number;
+  sourceQuality?: SourceQuality;
+  evidenceDetail?: string;
 }
 
 export interface SearchResult extends DocumentChunk {
@@ -172,6 +179,13 @@ export interface SourceReference {
   snippet: string;
   webUrl?: string;
   pageCount?: number;
+  extension?: string;
+  sourceQuality?: SourceQuality;
+  evidenceDetail?: string;
+  pageNumber?: number | null;
+  slideNumber?: number | null;
+  sheetName?: string | null;
 }
 
 export type DocumentIndexedMode = "FULL_TEXT" | "OCR_TEXT" | "PARTIAL_METADATA" | "TRANSCRIPT_LINKED";
+export type SourceQuality = "HIGH" | "MEDIUM" | "LOW";

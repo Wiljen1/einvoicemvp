@@ -15,6 +15,11 @@ import {
   stopCurrentCodexOperator
 } from "./codexService";
 import { fallbackMessage, loadGuardrails } from "./guardrailsService";
+import {
+  isCountrySupportQuestion,
+  normalizeCombinedCountryLabelsInText
+} from "./entityNormalizationService";
+import { buildSourceReferences } from "./sourceReferenceService";
 import { getActiveIndexStatus } from "./documentIndexRunService";
 import {
   estimateIndexedOverallConfidence,
@@ -238,15 +243,15 @@ async function runChatPipeline(session: InternalChatSession): Promise<void> {
 
     updateSession(session, 90, "Reading response");
     const confidence = estimateIndexedOverallConfidence(contextChunks);
-    const sources = contextChunks.map((chunk) => ({
-      fileName: chunk.relativePath || chunk.fileName,
-      relativePath: chunk.relativePath,
-      snippet: chunk.snippet,
-      webUrl: chunk.webUrl,
-      pageCount: chunk.metadata?.pageCount
-    }));
+    const shouldNormalizeCountryLabels = isCountrySupportQuestion(session.question);
+    const sources = buildSourceReferences(contextChunks, {
+      normalizeCountryLabels: shouldNormalizeCountryLabels
+    });
+    const normalizedAnswer = shouldNormalizeCountryLabels
+      ? normalizeCombinedCountryLabelsInText(codexResult.answer)
+      : codexResult.answer;
     const answer: ChatAnswer = {
-      answer: codexResult.answer,
+      answer: normalizedAnswer,
       confidence,
       sources,
       engine: codexResult.engine,

@@ -22,6 +22,7 @@ export function getLocalDocumentsPath(): string {
 export const projectRoot = getProjectRoot();
 export const configDirectory = path.join(projectRoot, "config");
 export const guardrailsConfigPath = path.join(configDirectory, "guardrails.json");
+export const entityNormalizationConfigPath = path.join(configDirectory, "entity-normalization.json");
 export const documentSourceConfigPath = path.join(configDirectory, "document-source.config.json");
 export const defaultDocumentsDirectory = path.join(projectRoot, "documents");
 export const uploadedDocumentsDirectory = path.join(projectRoot, "uploaded-documents");

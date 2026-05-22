@@ -277,6 +277,14 @@ export function SourceThread({ result }: { result: ChatAnswer }) {
                 source.relativePath || source.fileName
               )}
             </div>
+            {source.evidenceDetail ? (
+              <p className="thread-source-evidence">{source.evidenceDetail}</p>
+            ) : null}
+            {source.sourceQuality ? (
+              <span className={`source-quality ${source.sourceQuality.toLowerCase()}`}>
+                {source.sourceQuality} quality
+              </span>
+            ) : null}
             {source.snippet ? <p>{source.snippet}</p> : null}
           </article>
         ))}
